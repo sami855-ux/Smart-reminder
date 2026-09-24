@@ -3,7 +3,7 @@
 ## Document Control
 
 - **Status:** Draft build scope
-- **Version:** 1.0
+- **Version:** 1.1
 - **Last updated:** 2026-09-24
 - **Product:** Smart Reminder
 - **Client scope:** Android and iOS mobile applications only
@@ -35,7 +35,7 @@ The primary MVP user is an individual professional, freelancer, or student manag
 
 1. **Fast:** a common reminder can be created in seconds.
 2. **Clear:** the exact schedule is shown before creation.
-3. **Reliable:** accepted schedules survive worker restarts and are processed idempotently.
+3. **Reliable:** accepted schedules are reconciled into operating-system local notifications and remain visible in the app even when notification permission is unavailable.
 4. **Contextual:** a reminder can retain a short note explaining what it concerns.
 5. **Persistent but respectful:** an optional bounded nudge helps without creating notification spam.
 6. **User-controlled:** parsing and suggestions never silently change a schedule.
@@ -46,12 +46,12 @@ The primary MVP user is an individual professional, freelancer, or student manag
 
 - MVP-PLAT-001: The product MUST provide mobile applications for Android and iOS.
 - MVP-PLAT-002: No end-user web application or PWA is in scope; every MVP end-user workflow MUST be delivered through Android or iOS.
-- MVP-PLAT-003: Backend APIs, databases, workers, notification providers, and operational tooling are part of the system even though the user-facing product is mobile-only.
+- MVP-PLAT-003: Backend APIs, PostgreSQL, and operational tooling are part of the system even though the user-facing product is mobile-only. A background worker, Redis, BullMQ, FCM, and APNs server delivery are not MVP dependencies.
 - MVP-PLAT-004: Platform-specific limitations MUST be disclosed in the UI; unsupported behavior MUST NOT be presented as active.
 
 ### 3.2 Connectivity boundary
 
-- MVP-PLAT-005: The server is authoritative for accounts, reminders, schedules, occurrences, actions, and remote notification dispatch.
+- MVP-PLAT-005: The server is authoritative for accounts, reminders, schedules, occurrences, and accepted actions. Each mobile installation is responsible for reconciling eligible occurrences into local operating-system notifications.
 - MVP-PLAT-006: The app MUST show the last successfully cached reminder list when temporarily offline.
 - MVP-PLAT-007: Offline create, edit, delete, complete, snooze, and conflict resolution are not MVP capabilities.
 - MVP-PLAT-008: When an offline write is attempted, the app MUST preserve entered form data locally, explain that a connection is required, and allow retry after reconnection.
@@ -68,11 +68,11 @@ The MVP includes:
 6. Daily, weekly, and selected-weekday recurrence.
 7. Today, Upcoming, Overdue, and Recent Completed lists.
 8. Complete, snooze, reschedule, edit, skip occurrence, and delete actions.
-9. Push and in-app notifications.
+9. Local device and in-app notifications.
 10. Quiet hours and lock-screen privacy controls.
 11. One optional follow-up nudge while an occurrence remains incomplete.
 12. Reminder event history and a deterministic “Why now?” explanation.
-13. Cross-device online synchronization with idempotent actions.
+13. Cross-device state synchronization on app contact, with idempotent actions and explicit stale-notification limitations.
 
 ## 5. Explicit MVP Non-Goals
 
@@ -106,7 +106,7 @@ These features MUST remain in [req.md](req.md) and MUST NOT be treated as cancel
 - MVP-AUTH-007: Refresh/session credentials MUST rotate on use; reuse of an invalidated credential MUST revoke the affected session family.
 - MVP-AUTH-008: The application MUST securely persist mobile credentials using platform-provided secure storage.
 - MVP-AUTH-009: A user MUST be able to export their reminder data in a documented machine-readable format.
-- MVP-AUTH-010: Account deletion MUST immediately disable schedules, revoke sessions and device tokens, and cancel queued work. Primary user content MUST be purged within 30 days and expired backups within 90 days; any legally required exception MUST be documented and content-minimized.
+- MVP-AUTH-010: Account deletion MUST immediately disable server-side schedules and revoke sessions. The requesting device MUST cancel its local notifications before completing local sign-out; other installations MUST cancel them at their next authenticated contact. Primary user content MUST be purged within 30 days and expired backups within 90 days; any legally required exception MUST be documented and content-minimized.
 - MVP-AUTH-011: Authentication endpoints MUST use per-account and per-network rate limits.
 
 ## 7. Onboarding and Permissions
@@ -114,7 +114,7 @@ These features MUST remain in [req.md](req.md) and MUST NOT be treated as cancel
 - MVP-ONB-001: First run MUST confirm the user's locale, IANA timezone, and preferred 12-hour or 24-hour display.
 - MVP-ONB-002: Notification permission MUST be requested only after the app explains its value.
 - MVP-ONB-003: Denying or revoking notification permission MUST NOT prevent reminder creation.
-- MVP-ONB-004: When push is unavailable, the app MUST show an in-app warning and instructions for opening system settings.
+- MVP-ONB-004: When local notification permission is unavailable, the app MUST show an in-app warning and instructions for opening system settings.
 - MVP-ONB-005: The user SHOULD be able to send a test notification after enabling permission.
 - MVP-ONB-006: Permission state shown by the app MUST be reconciled with the operating-system state.
 
@@ -217,20 +217,24 @@ The primary navigation MUST contain:
 
 ### 13.1 Channels
 
-- MVP-NOT-001: MVP delivery channels are push and in-app only.
-- MVP-NOT-002: Every active mobile installation MUST register a server-issued device registration linked to the authenticated account.
-- MVP-NOT-003: Push tokens MUST be encrypted or equivalently protected at rest and MUST never appear in application logs.
-- MVP-NOT-004: Logout, account deletion, provider invalid-token responses, and explicit device removal MUST revoke the affected registration.
+- MVP-NOT-001: MVP delivery channels are local operating-system notifications and in-app notifications only.
+- MVP-NOT-002: The MVP MUST NOT depend on an always-running server worker, Redis, BullMQ, FCM, APNs, or another remote-push provider to deliver a scheduled reminder.
+- MVP-NOT-003: Each installation MUST maintain a protected local mapping between occurrence ID, logical notification ID, schedule revision, and the operating-system notification identifier.
+- MVP-NOT-004: Logout, account switching, device removal, and account deletion MUST cancel that account's pending local notifications on the current installation and wipe or cryptographically isolate the mapping.
 
 ### 13.2 Behavior
 
 - MVP-NOT-005: Notifications MUST support deep links to the relevant reminder occurrence.
 - MVP-NOT-006: Where the operating system permits, notification actions SHOULD include Done and Snooze.
-- MVP-NOT-007: Notification actions MUST be authenticated or exchanged through a narrowly scoped, expiring action credential.
+- MVP-NOT-007: A notification action that changes server state MUST open or resume the app, authenticate the current session, refresh the occurrence, and submit an idempotent action. It MUST NOT trust notification payload state as authoritative.
 - MVP-NOT-008: A stale notification action MUST be idempotent and MUST display the current state after the app opens.
-- MVP-NOT-009: Completing, skipping, snoozing, rescheduling, cancelling, or deleting MUST make earlier schedule revisions ineligible for dispatch.
-- MVP-NOT-010: The product MUST distinguish queued, submitted, provider-accepted, provider-rejected, device-received/displayed when reported, opened, acted-on, failed, and expired states.
-- MVP-NOT-011: The product MUST NOT label provider acceptance as confirmed device delivery.
+- MVP-NOT-009: Completing, skipping, snoozing, rescheduling, cancelling, deleting, pausing, or changing quiet hours MUST atomically cancel or replace affected reachable local notifications on the current installation.
+- MVP-NOT-010: The product MUST distinguish requested, locally scheduled, scheduling-failed, cancelled, opened, and acted-on states. It MUST distinguish an operating-system scheduling acknowledgement from confirmed display or reading.
+- MVP-NOT-011: A successful local scheduling API call MUST NOT be labelled as confirmed device display or delivery.
+- MVP-NOT-012: The app MUST reconcile local notifications after login, reminder synchronization, foreground, a successful schedule-changing mutation, permission changes, timezone changes, and application upgrade.
+- MVP-NOT-013: Reconciliation MUST be bounded by documented platform limits. The app MUST schedule the supported future horizon, replenish it on later contact, and warn the user if the protected horizon cannot be maintained.
+- MVP-NOT-014: Where supported recurrence can be represented safely by an operating-system repeating trigger, the app MAY use it; otherwise it MUST schedule individual occurrences within the supported horizon.
+- MVP-NOT-015: Creating or editing a reminder succeeds as server state even if local scheduling fails, but the app MUST visibly mark notification delivery as unprotected until reconciliation succeeds.
 
 ### 13.3 Preferences
 
@@ -239,15 +243,15 @@ The primary navigation MUST contain:
 - MVP-PREF-003: The app MUST offer lock-screen previews of full content, title only, or a generic private message.
 - MVP-PREF-004: Sound, vibration, and operating-system focus modes MUST be described as device-controlled when the app cannot override them.
 - MVP-PREF-005: The user MUST be able to pause all reminder notifications without deleting reminders.
-- MVP-PREF-006: Resuming a global pause MUST show one in-app summary of due/overdue occurrences and MUST NOT emit an individual push backlog.
+- MVP-PREF-006: Resuming a global pause MUST show one in-app summary of due/overdue occurrences, schedule only eligible future local notifications, and MUST NOT emit an individual notification backlog.
 
 ### 13.4 Online cross-device synchronization
 
-- MVP-SYNC-001: Every active registered device is eligible for push unless the user revokes it.
-- MVP-SYNC-002: The app MUST refresh authoritative state on login, foreground, pull-to-refresh, a successful mutation, and a synchronization push.
-- MVP-SYNC-003: Under normal online conditions, an accepted state change SHOULD become visible on another active device within 10 seconds.
-- MVP-SYNC-004: A terminal action on one device MUST suppress undispatched attempts for other devices immediately at the server and cancel already scheduled reachable-device attempts on a best-effort basis.
-- MVP-SYNC-005: A notification already displayed on another or offline device may remain visible; opening or acting on it MUST reconcile to the authoritative state without repeating effects.
+- MVP-SYNC-001: Each installation MUST refresh authoritative state on login, foreground, pull-to-refresh, and after a successful mutation, then reconcile its own local notifications.
+- MVP-SYNC-002: A server-accepted terminal action MUST make later conflicting actions idempotently return the current authoritative state.
+- MVP-SYNC-003: Without remote push in the MVP, a backgrounded or offline installation may retain a stale local notification until its next app contact. The UI and release notes MUST disclose this limitation.
+- MVP-SYNC-004: Opening or acting on a notification MUST refresh the authoritative occurrence before applying an action so a stale notification cannot repeat an effect.
+- MVP-SYNC-005: The MVP MUST NOT claim real-time cross-device notification cancellation or a fixed cross-device propagation latency.
 - MVP-SYNC-006: The MVP MUST NOT present cached state as current when its last synchronization time is unknown.
 
 ## 14. History and Explainability
@@ -269,11 +273,10 @@ The primary navigation MUST contain:
 - Session and deletion state
 - Created and updated timestamps
 
-### DeviceRegistration
+### DeviceInstallation
 
 - ID and user ID
 - Platform and app version
-- Protected push token
 - Permission/capability state
 - Locale, timezone, and last-seen time
 - Revoked timestamp
@@ -320,10 +323,10 @@ The primary navigation MUST contain:
 ### NotificationAttempt
 
 - ID, occurrence ID, device ID, and schedule revision
-- Channel and nudge step
+- Local channel and nudge step
 - Stable deduplication key
-- Queued, submitted, provider-accepted/rejected, device-received/displayed where reported, failed, expired, opened, and acted timestamps
-- Provider reference, bounded retry count, and sanitized error
+- Requested, locally scheduled, scheduling-failed, cancelled, opened, and acted timestamps
+- Operating-system notification identifier and sanitized error
 
 ### NotificationPreference
 
@@ -335,7 +338,7 @@ The primary navigation MUST contain:
 ## 16. API Contract Requirements
 
 - MVP-API-001: A generated OpenAPI document MUST be the canonical server contract.
-- MVP-API-002: The API MUST cover authentication, profile/data controls, device registration, reminders, schedules, occurrences/actions, events, preferences, and parsing.
+- MVP-API-002: The API MUST cover authentication, profile/data controls, device installations, reminders, schedules, occurrences/actions, events, preferences, and parsing.
 - MVP-API-003: Authenticated endpoints MUST derive the user identity from the session; clients MUST NOT select `user_id`.
 - MVP-API-004: Create and action endpoints MUST support idempotency keys.
 - MVP-API-005: Mutable resources MUST expose a revision or ETag for optimistic concurrency.
@@ -349,7 +352,7 @@ Minimum resource groups:
 ```text
 /auth
 /me
-/devices
+/device-installations
 /reminders
 /reminder-occurrences
 /reminder-events
@@ -359,22 +362,22 @@ Minimum resource groups:
 
 Exact paths and payloads belong in the generated OpenAPI contract.
 
-## 17. Background Processing and Reliability
+## 17. Local Scheduling and Reliability
 
-- MVP-REL-001: The primary database MUST be the authoritative source for schedules and state.
-- MVP-REL-002: Reminder mutation and durable scheduling intent MUST be committed atomically through a transactional outbox or equivalent pattern.
-- MVP-REL-003: Workers MUST use leases or visibility timeouts so abandoned jobs can be recovered.
-- MVP-REL-004: Processing MUST be at-least-once and all internal effects MUST be idempotent.
-- MVP-REL-005: A stable deduplication key MUST include occurrence, channel, device, nudge step, and schedule revision.
-- MVP-REL-006: A worker MUST recheck occurrence state and schedule revision immediately before dispatch.
-- MVP-REL-007: Retries MUST be bounded, use backoff and jitter, and end in a queryable dead-letter state.
-- MVP-REL-008: A reconciliation process MUST detect missing jobs, expired leases, and occurrences left without a terminal processing outcome.
-- MVP-REL-009: Queue state MUST be rebuildable from authoritative database state.
-- MVP-REL-010: Downtime recovery MUST follow a documented catch-up policy; stale occurrences MUST not generate an uncontrolled burst.
-- MVP-REL-011: At least 99% of eligible due occurrences SHOULD be submitted to the configured notification provider within 60 seconds, measured monthly and excluding documented provider outages and invalid or disabled device tokens.
-- MVP-REL-012: A single worker crash MUST NOT lose an accepted schedule.
-- MVP-REL-013: Operational alerts MUST cover scheduling lag, dispatch lag, retry exhaustion, dead-letter growth, invalid-token spikes, and recurrence expansion failures.
-- MVP-REL-014: After downtime, each still-incomplete occurrence delayed by no more than 24 hours MUST receive exactly one late push when push remains eligible. Older occurrences remain visible as overdue but MUST NOT generate an individual push backlog.
+- MVP-REL-001: PostgreSQL MUST be the authoritative source for accepted reminders, schedules, occurrences, and lifecycle state.
+- MVP-REL-002: Reminder creation and schedule-changing mutations MUST commit their authoritative state and immutable event atomically.
+- MVP-REL-003: The API MUST return enough occurrence, revision, timezone, quiet-hours, and nudge data for the mobile app to reconcile local notifications deterministically.
+- MVP-REL-004: Local reconciliation MUST be idempotent. Repeating it with the same authoritative state MUST not create duplicate operating-system notifications.
+- MVP-REL-005: A stable logical notification key MUST include occurrence, local channel, device installation, nudge step, and schedule revision.
+- MVP-REL-006: Before scheduling, the app MUST recheck the occurrence lifecycle, schedule revision, global pause, quiet hours, notification permission, and current device ownership.
+- MVP-REL-007: Failed local scheduling MUST use bounded retry on later app contact and remain visibly degraded; the app MUST NOT claim the reminder is protected.
+- MVP-REL-008: Reconciliation MUST detect missing mappings, stale revisions, orphaned operating-system notifications where enumeration is supported, and eligible occurrences without a scheduling outcome.
+- MVP-REL-009: The local notification schedule MUST be rebuildable from authoritative API state plus the protected local mapping.
+- MVP-REL-010: After app downtime or a long gap between synchronizations, overdue occurrences MUST appear in-app without generating an uncontrolled notification burst.
+- MVP-REL-011: The app SHOULD submit eligible occurrences to the operating-system scheduling API immediately after server acceptance and reconciliation, subject to documented platform limits.
+- MVP-REL-012: Force-closing the app after a successful operating-system scheduling acknowledgement MUST not cancel the scheduled notification.
+- MVP-REL-013: Diagnostics MUST cover permission state, reconciliation failure, scheduling failure, horizon coverage, stale mappings, and timezone mismatch without logging reminder content.
+- MVP-REL-014: The MVP provides no server-side late-push recovery. If the scheduling horizon expired while the app did not make contact, overdue occurrences appear in-app on the next contact and are not emitted as a backlog.
 
 ## 18. Security and Privacy
 
@@ -414,9 +417,9 @@ Required measures:
 - Manual versus natural-language creation rate
 - Parse failure and parse-correction rate for supported phrases
 - Notification permission opt-in rate
-- Eligible occurrence submission latency
-- Provider rejection and invalid-token rate
-- Duplicate notification-attempt rate
+- Eligible occurrence local-scheduling acknowledgement latency
+- Local scheduling failure and permission-state mismatch rate
+- Duplicate pending local-notification rate
 - Percentage of occurrences acted on within 15 minutes and 24 hours
 - Completion rate with and without the optional nudge
 - Snooze rate
@@ -441,15 +444,15 @@ Given the parser is unavailable or AI processing is disabled, the draft remains 
 
 ### MVP-AC-004 — Permission denied
 
-Given push permission is denied, creating a reminder still succeeds, the due occurrence appears in-app, and the app explains that background push is unavailable.
+Given local notification permission is denied, creating a reminder still succeeds, the due occurrence appears in-app, and the app explains that background notification delivery is unavailable.
 
-### MVP-AC-005 — Stale dispatch invalidation
+### MVP-AC-005 — Stale local schedule invalidation
 
-Given an occurrence has been snoozed, rescheduled, completed, skipped, or deleted, a queued job for an older schedule revision cannot send.
+Given an occurrence has been snoozed, rescheduled, completed, skipped, or deleted, the current installation cancels or replaces its local notification for the older schedule revision.
 
-### MVP-AC-006 — Worker replay
+### MVP-AC-006 — Reconciliation replay
 
-Given the same worker job is executed more than once, one logical notification attempt and one effective action result are recorded for its deduplication key.
+Given local notification reconciliation runs more than once with the same authoritative state, one pending operating-system notification and one logical scheduling record exist for its deduplication key.
 
 ### MVP-AC-007 — Recurring occurrence action
 
@@ -461,11 +464,11 @@ Given two devices act on the same occurrence, duplicate taps are harmless and a 
 
 ### MVP-AC-009 — Quiet hours
 
-Given an occurrence becomes due during quiet hours, it is visible as due in the app and its push notification is delayed until quiet hours end without creating multiple delayed copies.
+Given an occurrence becomes due during quiet hours, it is visible as due in the app and its local notification is scheduled for quiet-hours end without creating multiple copies.
 
 ### MVP-AC-010 — Account deletion
 
-Given account deletion is confirmed, sessions and devices are revoked and pending schedules become ineligible before the deletion request returns success.
+Given account deletion is confirmed, the requesting installation cancels its pending local notifications and sessions are revoked before local sign-out completes; another installation cancels its notifications at its next authenticated contact.
 
 ### MVP-AC-011 — Accessibility
 
@@ -477,7 +480,7 @@ Given a schedule time falls in a DST gap or repeated hour, the app applies the r
 
 ### MVP-AC-013 — Future-series edit
 
-Given a recurring reminder with history, editing the selected and future occurrences creates a new schedule revision, preserves historical occurrence identity, and invalidates future jobs from the superseded revision.
+Given a recurring reminder with history, editing the selected and future occurrences creates a new schedule revision, preserves historical occurrence identity, and replaces future local notifications from the superseded revision on the current installation.
 
 ### MVP-AC-014 — Snooze and nudge
 
@@ -489,11 +492,11 @@ Given the device is offline, a creation attempt is stored only as an encrypted u
 
 ### MVP-AC-016 — Cross-device action
 
-Given two online registered devices receive the same occurrence, completing it on one suppresses undispatched attempts and causes a stale notification action on the other to show the completed authoritative state.
+Given two installations previously scheduled the same occurrence locally, completing it on one updates the server. If the other later opens its stale notification, it refreshes and shows the completed authoritative state without repeating the effect.
 
 ### MVP-AC-017 — Global pause
 
-Given notifications were globally paused while occurrences became due, resuming shows the overdue occurrences and does not emit an individual push for every paused occurrence.
+Given notifications were globally paused while occurrences became due, resuming shows the overdue occurrences, schedules eligible future local notifications, and does not emit one notification for every overdue occurrence.
 
 ### MVP-AC-018 — Cache cleanup
 
@@ -503,9 +506,9 @@ Given logout, account switching, device revocation, or account deletion, cached 
 
 Given input containing a supported time clause plus an unsupported location or device clause, the preview retains the unsupported text as a warning and creates nothing until the user explicitly removes or changes it.
 
-### MVP-AC-020 — Late recovery
+### MVP-AC-020 — Scheduling-horizon recovery
 
-Given worker downtime, an eligible incomplete occurrence no more than 24 hours late receives at most one late push, while older occurrences appear overdue without a notification burst.
+Given the local scheduling horizon expired while the app did not make contact, the next foreground synchronization shows overdue occurrences without a notification burst and replenishes eligible future local notifications.
 
 ## 22. MVP-to-Completed-Product Traceability
 
@@ -533,10 +536,10 @@ The MVP is releasable only when:
 
 1. Every `MVP-*` requirement is mapped to implementation and evidence.
 2. The generated API contract matches the deployed API.
-3. Unit, integration, recurrence/timezone, worker crash/replay, concurrency, and notification-provider tests pass.
+3. Unit, integration, recurrence/timezone, reconciliation replay, concurrency, and local-notification adapter tests pass.
 4. Supported Android and iOS versions pass the critical journey matrix.
-5. Notification dispatch SLO instrumentation and alerts are live.
-6. Account deletion, export, permission denial, parser failure, and worker recovery have been exercised in a production-like environment.
+5. Local scheduling coverage, permission, reconciliation failure, and horizon diagnostics are implemented.
+6. Account deletion, export, permission denial, parser failure, stale-revision cancellation, and horizon recovery have been exercised on supported physical devices.
 7. Security and privacy review has no unresolved release-blocking finding.
 8. Accessibility verification covers both VoiceOver and TalkBack.
 9. Known provider or operating-system limitations are documented in release notes and user-facing help.

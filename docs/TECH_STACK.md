@@ -3,7 +3,7 @@
 ## Document Control
 
 - **Status:** Architecture baseline
-- **Version:** 1.0
+- **Version:** 1.1
 - **Last updated:** 2026-09-24
 - **Supported clients:** Android and iOS mobile applications
 - **First-release scope:** [MVP Requirements](MVP_REQUIREMENTS.md)
@@ -13,36 +13,31 @@ This document defines the implementation stack, code ownership boundaries, proje
 
 ## 1. Architecture Summary
 
-Smart Reminder is a mobile-only product with a server-side API and background workers.
+Smart Reminder is a mobile-only product. The MVP uses device-scheduled local notifications and a request-driven NestJS API; it has no always-on background worker.
 
 ```text
 Android / iOS app
 ├── Local UI, cached reads, secure credentials
-├── Local notification adapter
+├── Local notification scheduler and reconciler
 └── HTTPS REST API
           │
           ▼
     NestJS API
     ├── PostgreSQL — authoritative product data
-    ├── OpenAI API — natural-language parsing
-    └── Transactional outbox
-              │
-              ▼
-       Redis + BullMQ
-              │
-              ▼
-        NestJS worker
-        ├── FCM / APNs
-        ├── Recurrence and notification jobs
-        └── Future integrations and channels
+    └── OpenAI API — natural-language parsing
+
+Post-MVP additions
+└── Transactional outbox → Redis + BullMQ → NestJS worker
+    ├── FCM / APNs remote push
+    ├── Workflows and escalations
+    └── External channels and integrations
 ```
 
-The backend is a modular monolith deployed as two processes:
+The MVP backend is one request-driven API process:
 
-- **API process:** authentication, REST endpoints, validation, webhooks, and synchronous application logic.
-- **Worker process:** occurrence expansion, notification delivery, retries, reconciliation, and later workflow/integration work.
+- **API process:** authentication, REST endpoints, validation, natural-language parsing, synchronous occurrence calculation, and application logic.
 
-PostgreSQL is the source of truth. Redis and BullMQ coordinate work but MUST NOT be the only record of reminder intent or future schedules.
+PostgreSQL is the server source of truth. Each mobile installation fetches eligible occurrences and reconciles them into operating-system local notifications. Redis, BullMQ, an always-on worker, FCM, and APNs are deferred until remote delivery or other completed-product background work is implemented.
 
 ## 2. Selected Technology Stack
 
@@ -68,13 +63,13 @@ TypeScript `strict` mode MUST remain enabled. Expo-managed dependencies MUST be 
 
 | Concern | Technology | Responsibility |
 | --- | --- | --- |
-| Mobile notification API | `expo-notifications` | Permission state, push-token registration, local scheduling, actions, and notification responses |
-| Local delivery | OS local notifications through `expo-notifications` | Device-owned scheduled reminders when the delivery contract assigns local ownership |
-| Remote Android delivery | Firebase Cloud Messaging (FCM) | Server-triggered Android push notifications |
-| Remote iOS delivery | Apple Push Notification service (APNs) | Server-triggered iOS push notifications |
-| Background orchestration | BullMQ worker | Eligibility checks, dispatch, retries, and reconciliation |
+| Mobile notification API | `expo-notifications` | Permission state, local scheduling, cancellation, actions, and notification responses |
+| MVP delivery | OS local notifications through `expo-notifications` | Device-owned scheduled reminders without an always-on server worker |
+| Post-MVP Android delivery | Firebase Cloud Messaging (FCM) | Server-triggered Android push notifications |
+| Post-MVP iOS delivery | Apple Push Notification service (APNs) | Server-triggered iOS push notifications |
+| Post-MVP orchestration | BullMQ worker | Remote delivery, workflows, escalation, retries, and reconciliation |
 
-The MVP requirements currently define **push and in-app** as MVP channels. Local scheduled delivery is part of the selected technical capability and the completed-product requirements, but it MUST NOT silently duplicate an MVP remote push. If local delivery is promoted into the MVP, [MVP_REQUIREMENTS.md](MVP_REQUIREMENTS.md) must first be amended so the ownership, quiet-hours, cross-device, and acceptance rules agree.
+The MVP uses **local scheduled and in-app notifications only**. The app schedules notifications after server acceptance and reconciles them on login, synchronization, foreground, successful mutations, permission/timezone changes, and upgrade. Because the MVP has no remote push, another backgrounded device may retain a stale notification until that app next contacts the server; the product must disclose this limitation.
 
 ### 2.3 Backend
 
@@ -83,10 +78,10 @@ The MVP requirements currently define **push and in-app** as MVP channels. Local
 | API framework | NestJS | Versioned REST API, modules, guards, validation, and OpenAPI |
 | Database | PostgreSQL | Authoritative users, reminders, schedules, occurrences, sessions, events, and deliveries |
 | ORM and migrations | Prisma | Typed data access and schema migrations |
-| Queue infrastructure | Redis | BullMQ coordination, short-lived rate-limit state, and disposable cache data |
-| Background jobs | BullMQ + `@nestjs/bullmq` | Reliable asynchronous work and bounded retries |
 | API description | NestJS Swagger / OpenAPI | Canonical mobile/server contract |
-| Testing | Jest, Supertest, and Testcontainers | Unit, integration, contract, worker, and API tests |
+| Testing | Jest, Supertest, and Testcontainers | Unit, integration, contract, and API tests |
+| Post-MVP queue infrastructure | Redis | BullMQ coordination and disposable execution state |
+| Post-MVP background jobs | BullMQ + `@nestjs/bullmq` | Remote delivery, workflows, integrations, and bounded retries |
 
 ### 2.4 AI
 
@@ -118,15 +113,14 @@ Use a pnpm workspace. A build orchestrator may be added when CI complexity warra
 
 ```text
 smart-reminder/
-├── apps/
-│   ├── mobile/                       # Expo / React Native application
-│   └── server/                       # NestJS API and worker
+├── mobile/                           # Expo / React Native application
+├── server/                           # NestJS API; worker added post-MVP
 ├── packages/
 │   ├── api-client/                   # Generated from server OpenAPI; do not hand-edit
 │   ├── eslint-config/                # Shared lint rules
 │   └── typescript-config/            # Shared strict TypeScript bases
 ├── infra/
-│   ├── compose.yaml                  # Local PostgreSQL and Redis
+│   ├── compose.yaml                  # Local PostgreSQL for the MVP
 │   └── README.md
 ├── .github/
 │   └── workflows/                    # CI checks and builds
@@ -134,9 +128,10 @@ smart-reminder/
 ├── package.json
 ├── pnpm-lock.yaml
 ├── pnpm-workspace.yaml
-├── TECH_STACK.md
-├── MVP_REQUIREMENTS.md
-└── req.md
+├── docs/
+│   ├── TECH_STACK.md
+│   ├── MVP_REQUIREMENTS.md
+│   └── req.md
 ```
 
 Do not share Prisma entities with the mobile application. The mobile contract is generated from versioned OpenAPI schemas in `packages/api-client`.
@@ -146,7 +141,7 @@ Do not share Prisma entities with the mobile application. The mobile contract is
 ### 4.1 Folder tree
 
 ```text
-apps/mobile/
+mobile/
 ├── app/                              # Expo Router entry points only
 │   ├── _layout.tsx                   # Root providers and navigation guards
 │   ├── +not-found.tsx
@@ -272,7 +267,7 @@ Expo Router files MUST remain thin. They may validate route parameters, apply a 
 | Cached reads and unsent drafts | Dedicated persistence adapter under `src/offline` |
 | Completed-product mutation outbox and conflicts | Encrypted durable local database behind `src/offline` |
 | Local OS scheduling and notification permission | Notification platform adapter |
-| Authoritative synchronized schedule and remote eligibility | NestJS + PostgreSQL |
+| Authoritative synchronized schedule, occurrence, and lifecycle state | NestJS + PostgreSQL |
 
 Server data MUST NOT be copied into Zustand. Form state MUST NOT be duplicated in Zustand unless a documented multi-screen draft requires it.
 
@@ -292,22 +287,19 @@ Features own their TanStack Query keys, queries, mutations, and invalidation beh
 
 ## 5. Notification Architecture
 
-### 5.1 One owner per occurrence and device
+### 5.1 MVP local ownership
 
-Every occurrence/device pair MUST have one declared delivery owner:
+In the MVP, every eligible occurrence/device pair is owned by the mobile installation, which schedules the operating-system notification. There is no remote delivery owner and no server-side dispatch job.
 
-- `LOCAL`: the device schedules the OS notification.
-- `REMOTE`: the server worker sends through FCM or APNs.
-
-The application MUST NOT schedule both paths independently for the same logical delivery. Every attempt carries:
+Every local scheduling record carries:
 
 - Occurrence ID
 - Logical notification ID
 - Schedule revision
-- Device registration ID
-- Ownership mode
+- Device installation ID
+- Operating-system notification ID
 
-Completing, skipping, snoozing, rescheduling, pausing, cancelling, deleting, logging out, or switching accounts MUST invalidate or cancel affected local work and make stale remote work ineligible.
+Completing, skipping, snoozing, rescheduling, pausing, cancelling, deleting, logging out, or switching accounts MUST cancel or replace affected local notifications on the current installation. Other installations reconcile when they next contact the server.
 
 ### 5.2 Mobile adapter
 
@@ -329,7 +321,22 @@ export interface LocalNotificationAdapter {
 
 The local persistence layer maps logical notification IDs to platform notification IDs. Lock-screen payloads follow the user's privacy preference and MUST NOT expose hidden reminder content.
 
-### 5.3 Remote push
+### 5.3 Reconciliation triggers and horizon
+
+The mobile app reconciles its local schedule after:
+
+- Login and account restoration
+- Successful reminder synchronization
+- App foreground and pull-to-refresh
+- Successful create, edit, snooze, complete, skip, pause, cancel, or delete
+- Notification permission or timezone change
+- Application upgrade
+
+The reconciler compares authoritative occurrences with its protected logical-to-platform mapping, cancels stale revisions, schedules missing eligible notifications, and records failures without exposing reminder content. It uses operating-system repeating triggers only where they preserve the confirmed recurrence semantics; otherwise it schedules a documented bounded future horizon and replenishes it on later app contact.
+
+A successful scheduling API call proves only that the operating system accepted the request. It does not prove display or reading. If scheduling fails or the future horizon cannot be protected, the UI marks notification delivery as degraded.
+
+### 5.4 Remote push — post-MVP
 
 - The app obtains and refreshes its push token through the mobile notification adapter.
 - The backend stores token type, platform, application environment, device registration, and revocation state explicitly.
@@ -340,21 +347,20 @@ The local persistence layer maps logical notification IDs to platform notificati
 
 Expo push tokens and native FCM/APNs tokens are different types. Do not mix them in one untyped field or send a token to the wrong provider.
 
-### 5.4 Device validation
+Remote push MUST NOT be enabled alongside local delivery for the same occurrence/device pair until the completed-product ownership and deduplication contract is implemented.
+
+### 5.5 Device validation
 
 Expo Go is not sufficient proof for background delivery, notification actions, location, Bluetooth, Wi-Fi, or all native permission behavior. Validate these with development builds and physical Android and iOS devices.
 
 ## 6. Backend Application Structure
 
 ```text
-apps/server/
+server/
 ├── src/
 │   ├── api/
 │   │   ├── main.ts
 │   │   └── api.module.ts
-│   ├── worker/
-│   │   ├── main.ts
-│   │   └── worker.module.ts
 │   ├── bootstrap/
 │   │   ├── validation.ts
 │   │   ├── openapi.ts
@@ -376,12 +382,6 @@ apps/server/
 │   │   ├── prisma.module.ts
 │   │   ├── prisma.service.ts
 │   │   └── transaction.service.ts
-│   ├── queues/
-│   │   ├── queue.module.ts
-│   │   ├── queue-names.ts
-│   │   ├── job-options.ts
-│   │   ├── job-payloads.ts
-│   │   └── producers/
 │   ├── observability/
 │   │   ├── logging/
 │   │   ├── metrics/
@@ -413,7 +413,6 @@ apps/server/
 │   ├── integration/
 │   ├── e2e/
 │   ├── contract/
-│   ├── workers/
 │   ├── recurrence/
 │   ├── security/
 │   ├── fixtures/
@@ -432,55 +431,76 @@ modules/reminders/
 ├── application/                       # Commands, queries, and use cases
 ├── api/                               # Controllers and DTO mapping
 ├── infrastructure/                    # Prisma repositories and adapters
-├── workers/                           # BullMQ processors owned by the module
 └── reminders.module.ts
 ```
 
-Keep the implementation as one modular monolith until scale or team ownership produces evidence for a service boundary. The API and worker may scale independently without splitting the domain into microservices.
+Keep the MVP as one request-driven modular monolith. When remote delivery or another background feature enters scope, add the following folders without splitting the domain into microservices:
 
-## 7. Database and Queue Reliability
+```text
+server/src/
+├── worker/
+│   ├── main.ts
+│   └── worker.module.ts
+└── queues/
+    ├── queue.module.ts
+    ├── queue-names.ts
+    ├── job-options.ts
+    ├── job-payloads.ts
+    └── producers/
 
-### 7.1 Source-of-truth rules
+modules/<module>/workers/              # BullMQ processors owned by a module
+```
 
-- PostgreSQL stores reminder intent, schedules, occurrences, sessions, device registrations, immutable events, outbox records, and delivery state.
-- Redis may hold queues, rate-limit counters, leases, and disposable cache data.
-- Loss of Redis may delay work, but it MUST NOT lose reminder intent.
-- A future reminder MUST NOT exist only as one long-lived BullMQ delayed job.
+The later API and worker processes may scale independently while continuing to share the same modular codebase.
 
-### 7.2 Transactional outbox
+## 7. Database and Local-Scheduling Reliability
 
-A state mutation, its audit event, and its outbox record are committed in one PostgreSQL transaction. An outbox relay publishes a versioned BullMQ job with a stable job ID.
+### 7.1 MVP source-of-truth rules
 
-Workers MUST:
+- PostgreSQL stores accepted reminder intent, schedules, occurrences, sessions, device installations, immutable events, and logical notification state.
+- Reminder mutations and their immutable events commit in one PostgreSQL transaction.
+- The API returns authoritative eligible occurrences and schedule revisions; it does not create a BullMQ job for them.
+- Each mobile installation maintains a protected mapping from the logical notification ID to the operating-system notification ID.
+- The mapping is rebuildable from authoritative API state after reinstall, corruption, or reconciliation failure.
+- JavaScript timers are not used to wait for reminder due times; the operating system owns scheduled wake-up and display.
 
-- Assume at-least-once execution.
-- Re-read authoritative state before producing an effect.
-- Check lifecycle, schedule revision, ownership, permission, quiet-hours, and channel eligibility.
-- Use PostgreSQL uniqueness constraints for durable deduplication.
-- Use bounded retries with exponential backoff and jitter.
-- Move exhausted work into a queryable dead-letter state.
-- Support reconciliation for missing queue work, stale leases, invalid tokens, and unexpanded recurrence.
+### 7.2 MVP reconciliation rules
 
-### 7.3 Queue names
+The mobile reconciler MUST:
 
-Start the MVP with only the queues it needs while reserving clear names:
+- Be idempotent when run repeatedly with unchanged state.
+- Re-read lifecycle, schedule revision, quiet hours, global pause, permission, and timezone before scheduling.
+- Cancel stale or ineligible notifications before scheduling replacements where the platform allows.
+- Bound retries and surface degraded protection instead of silently failing.
+- Avoid notification bursts when overdue occurrences are discovered.
+- Preserve a deterministic logical key across cancellation and replacement.
+- Treat another device's local schedule as unreachable until that app next contacts the server.
+
+### 7.3 Post-MVP queue architecture
+
+Redis, BullMQ, a transactional outbox, and a separately deployable NestJS worker are added only when server-triggered push, integrations, workflows, escalation, or other asynchronous delivery enters scope. At that point:
+
+- PostgreSQL remains authoritative and queue loss must not erase reminder intent.
+- Domain mutation, immutable event, and outbox record commit atomically.
+- Workers assume at-least-once execution and re-read authoritative state before effects.
+- PostgreSQL uniqueness constraints provide durable deduplication.
+- Retries are bounded with backoff, jitter, dead-letter state, and reconciliation.
+- Job payloads contain identifiers and revisions, not full reminder bodies or provider secrets.
+
+Reserved post-MVP queue names are:
 
 ```text
 outbox
 occurrence-expansion
 notification-delivery
-maintenance
-dead-letter
-
-# Added in later releases
 trigger-evaluation
 workflow
 escalation
 integration
 ai
+maintenance
+dead-letter
 ```
-
-Job payloads contain identifiers and revisions, not full reminder bodies or provider secrets.
 
 ## 8. OpenAI Parsing Boundary
 
@@ -502,7 +522,7 @@ Keep OpenAI-specific DTOs and SDK calls inside `modules/parsing/infrastructure/o
 ## 9. API Contract
 
 - Expose versioned REST endpoints under `/v1`.
-- Generate `apps/server/openapi/openapi.json` from the NestJS application.
+- Generate `server/openapi/openapi.json` from the NestJS application.
 - Generate the mobile TypeScript client into `packages/api-client`.
 - Never import NestJS DTOs or Prisma types into the mobile app.
 - Require idempotency keys for create and action mutations.
@@ -510,7 +530,7 @@ Keep OpenAI-specific DTOs and SDK calls inside `modules/parsing/infrastructure/o
 - Use cursor pagination for growing collections.
 - Use RFC 3339 timestamps and IANA timezone identifiers.
 - Preserve original civil date/time plus resolved UTC instant where the requirements demand it.
-- Version REST, queue-job, domain-event, and provider-webhook contracts separately.
+- Version REST contracts for the MVP. Version queue jobs, domain events, and provider webhooks separately when those post-MVP components are added.
 
 Use one stable error shape:
 
@@ -579,7 +599,7 @@ EXPO_PUBLIC_APP_ENV=development
 EXPO_PUBLIC_API_URL=http://localhost:3000/v1
 ```
 
-An `EXPO_PUBLIC_*` value is compiled into the mobile application and MUST be treated as public. Do not place JWT signing keys, refresh tokens, OpenAI keys, database URLs, Redis URLs, FCM server credentials, or APNs credentials there.
+An `EXPO_PUBLIC_*` value is compiled into the mobile application and MUST be treated as public. Do not place JWT signing keys, refresh tokens, OpenAI keys, database URLs, or future Redis/FCM/APNs credentials there.
 
 ### 12.2 Server environment
 
@@ -587,7 +607,6 @@ An `EXPO_PUBLIC_*` value is compiled into the mobile application and MUST be tre
 NODE_ENV=development
 PORT=3000
 DATABASE_URL=postgresql://user:password@localhost:5432/smart_reminder
-REDIS_URL=redis://localhost:6379
 
 JWT_ACCESS_PRIVATE_KEY=
 JWT_ACCESS_PUBLIC_KEY=
@@ -596,7 +615,12 @@ REFRESH_TOKEN_TTL=
 
 OPENAI_API_KEY=
 OPENAI_REMINDER_PARSER_MODEL=
+```
 
+Post-MVP remote delivery adds server-only variables such as:
+
+```dotenv
+REDIS_URL=redis://localhost:6379
 FCM_PROJECT_ID=
 FCM_CLIENT_EMAIL=
 FCM_PRIVATE_KEY=
@@ -622,12 +646,12 @@ The checked-in `.env.example` contains names and safe examples only. Deployment 
 ### 13.2 Server
 
 - Unit tests for domain policies and deterministic time logic.
-- Integration tests with real PostgreSQL and Redis containers.
+- Integration tests with a real PostgreSQL container.
 - Supertest API tests for authentication, authorization, validation, idempotency, and concurrency.
-- Worker tests for retry, replay, stale revisions, deduplication, dead-letter behavior, and reconciliation.
 - Recurrence tests across IANA timezones, DST gaps/folds, leap years, and month boundaries.
 - OpenAI parser conformance tests with fixed input context and schema-valid fixtures; CI must not depend on live model responses.
-- Provider contract tests and sandbox tests for FCM/APNs before release.
+
+MVP device tests MUST cover local scheduling replay, stale-revision replacement, permission denial/revocation, quiet hours, timezone change, scheduling-horizon replenishment, logout cleanup, and killed-app display. Worker replay and FCM/APNs provider tests are post-MVP gates when those components enter scope.
 
 An Expo export, TypeScript build, or emulator test is useful evidence but does not prove physical-device notification delivery, background trigger behavior, provider callbacks, database migrations, or production readiness.
 
@@ -637,17 +661,17 @@ An Expo export, TypeScript build, or emulator test is useful evidence but does n
 
 - Use EAS development builds for native-module development and device testing.
 - Maintain separate development, preview, and production profiles in `eas.json`.
-- Configure Android package IDs, iOS bundle IDs, notification entitlements, deep links, and environment-specific push credentials explicitly.
+- Configure Android package IDs, iOS bundle IDs, local-notification permissions, notification categories, and deep links explicitly. Push credentials are added only with post-MVP remote delivery.
 - Treat over-the-air updates as application code updates, not a mechanism for changing native capabilities.
 
 ### Server
 
-- Produce one container image with separate API and worker start commands.
+- Produce one NestJS API container for the MVP; there is no worker deployment.
 - Run Prisma migrations as a controlled deployment step, not independently from every application replica.
-- Expose liveness and readiness endpoints for both processes.
-- Readiness checks verify required dependencies for the process without modifying data.
-- Scale API and worker processes independently.
-- Back up PostgreSQL and test restoration. Redis backup is not a substitute for PostgreSQL recovery.
+- Expose API liveness and readiness endpoints.
+- Readiness checks verify required API dependencies without modifying data.
+- Back up PostgreSQL and test restoration.
+- When post-MVP background work is added, the same image MAY expose a separate worker command so API and worker processes can scale independently.
 
 ### Continuous integration
 
@@ -675,7 +699,7 @@ Exact package scripts are established when the workspace is scaffolded. CI also 
 - Logs exclude passwords, tokens, notification destinations, reminder content, coordinates, network identifiers, and integration credentials.
 - Sensitive columns such as provider tokens are encrypted or equivalently protected at rest.
 - Notification previews respect the configured lock-screen privacy mode.
-- Account deletion immediately disables schedules, revokes sessions and devices, and makes queued work ineligible before asynchronous purging.
+- Account deletion immediately disables server schedules, revokes sessions, and requires the current installation to cancel its local notifications before local sign-out. Other installations clean up on their next authenticated contact.
 - Dependency, container, and secret scanning run in CI.
 
 ## 16. Architecture Invariants
@@ -687,32 +711,32 @@ The following rules are non-negotiable unless this document and the requirements
 3. TanStack Query owns server state; Zustand does not become a second server cache.
 4. SecureStore holds small secrets, not reminder records or offline synchronization state.
 5. PostgreSQL is authoritative after synchronization.
-6. Redis and BullMQ may delay work if unavailable, but their loss does not erase reminder intent.
-7. JavaScript timers are not reminder schedulers.
-8. Each occurrence/device pair has one local-or-remote notification owner and one schedule revision.
-9. Workers are idempotent and assume at-least-once execution.
+6. The MVP has no Redis, BullMQ, always-on worker, FCM, or APNs dependency.
+7. JavaScript timers are not reminder schedulers; the operating-system local notification API owns delivery timing.
+8. Each MVP occurrence/device pair has one local notification identity and one schedule revision.
+9. Local reconciliation is idempotent and rebuildable from authoritative API state.
 10. The OpenAI API is called only by the server and its output is untrusted until validated.
 11. AI parsing always ends at an editable confirmation preview.
 12. Prisma and backend framework types never cross into the mobile application.
 13. Secrets never use `EXPO_PUBLIC_*` and never enter source control.
 14. Platform capability limitations are visible; unsupported triggers are never presented as active.
-15. Provider acceptance is not reported as confirmed delivery unless the provider supplies that evidence.
+15. Operating-system scheduling acknowledgement is not reported as confirmed display or reading.
 
 ## 17. Recommended Implementation Order
 
 1. Create the pnpm workspace and strict shared TypeScript configuration.
 2. Scaffold the Expo SDK 57 mobile application and thin Expo Router route groups.
-3. Scaffold the NestJS API and worker entry points.
-4. Add local PostgreSQL and Redis infrastructure.
+3. Scaffold the request-driven NestJS API.
+4. Add local PostgreSQL infrastructure.
 5. Define Prisma schema, migration workflow, health checks, and environment validation.
 6. Implement authentication, rotating refresh sessions, secure mobile storage, and refresh coordination.
 7. Define versioned error handling, OpenAPI generation, and generated mobile client workflow.
 8. Implement reminders, schedules, occurrences, events, and deterministic recurrence behavior.
 9. Add TanStack Query features and the manual reminder form.
 10. Add the server-side OpenAI parser, schema validation, preview, and confirmation flow.
-11. Add device registration, remote push delivery, outbox, BullMQ workers, and reconciliation.
-12. Add the notification platform adapter and phase-appropriate local scheduling.
-13. Complete MVP security, accessibility, contract, recurrence, worker, and real-device notification tests.
-14. Add post-MVP modules only in the order defined by [req.md](req.md).
+11. Add the local-notification adapter, protected notification mapping, reconciliation, scheduling horizon, and degraded-delivery UI.
+12. Complete MVP security, accessibility, contract, recurrence, reconciliation, and real-device notification tests.
+13. Add Redis, BullMQ, an outbox, a worker process, FCM/APNs, and remote notification ownership only when server-triggered push enters scope.
+14. Add the remaining post-MVP modules only in the order defined by [req.md](req.md).
 
 The first releasable build is complete only when the acceptance gates in [MVP_REQUIREMENTS.md](MVP_REQUIREMENTS.md) pass. A successful build or generated folder structure alone is not release evidence.

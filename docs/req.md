@@ -3,7 +3,7 @@
 ## Document Control
 
 - **Status:** Target completed-product specification
-- **Version:** 2.0
+- **Version:** 2.1
 - **Last updated:** 2026-09-24
 - **Product:** Smart Reminder
 - **User-facing clients:** Android and iOS mobile applications only
@@ -137,8 +137,9 @@ The order below controls scope, not whether a feature belongs in the completed p
 | Manual and natural-language capture | Required | Enhanced | Required |
 | One-time, daily, weekly recurrence | Required | Required | Required |
 | One bounded unfinished nudge | Required | Required | Superseded by policies |
-| Push and in-app delivery | Required | Required | Required |
-| Local-device offline notification | Deferred | Partial | Required |
+| Local scheduled and in-app delivery | Required | Required | Required |
+| Server-triggered push delivery | Deferred | Required | Required |
+| Local notification for offline-created reminders | Deferred | Partial | Required |
 | Location arrival/departure triggers | Deferred | Required | Required |
 | Monthly, yearly, and custom recurrence | Deferred | Required | Required |
 | Mobile day/week/month calendar views | Deferred | Required | Required |
