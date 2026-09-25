@@ -1,6 +1,5 @@
-import * as Notifications from 'expo-notifications';
-
 import { ApiError } from '../api/errors';
+import { cancelAllScheduledNotifications } from '../platform/notifications/notification-runtime';
 
 import { useAuthStore } from './auth.store';
 import { clearRefreshToken } from './token-storage';
@@ -17,7 +16,7 @@ export async function clearLocalSession(): Promise<void> {
   useAuthStore.getState().clearSession();
 
   await Promise.allSettled([
-    Notifications.cancelAllScheduledNotificationsAsync(),
+    cancelAllScheduledNotifications(),
     Promise.resolve().then(() => accountDataCleanup?.()),
   ]);
 
