@@ -1,5 +1,6 @@
+import { isRunningInExpoGo } from 'expo';
 import * as Linking from 'expo-linking';
-import { Platform } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 
 import type { NotificationPermissionState } from '../../onboarding/types';
 import { loadNotificationsModule } from './notification-runtime';
@@ -14,17 +15,65 @@ export type PermissionSnapshot = {
   checkedAt: string;
 };
 
+function createSnapshot(state: NotificationPermissionState): PermissionSnapshot {
+  return { state, checkedAt: new Date().toISOString() };
+}
+
+function usesAndroidExpoGoFallback(): boolean {
+  return Platform.OS === 'android' && isRunningInExpoGo();
+}
+
+async function readAndroidExpoGoPermission(): Promise<PermissionSnapshot> {
+  if (Number(Platform.Version) < 33) return createSnapshot('granted');
+
+  try {
+    const granted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+    );
+    return createSnapshot(granted ? 'granted' : 'prompt-available');
+  } catch {
+    return createSnapshot('unavailable');
+  }
+}
+
+async function requestAndroidExpoGoPermission(): Promise<PermissionSnapshot> {
+  if (Number(Platform.Version) < 33) return createSnapshot('granted');
+
+  try {
+    const result = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+    );
+
+    if (result === PermissionsAndroid.RESULTS.GRANTED) {
+      return createSnapshot('granted');
+    }
+
+    return createSnapshot(
+      result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+        ? 'blocked'
+        : 'denied',
+    );
+  } catch {
+    return createSnapshot('unavailable');
+  }
+}
+
 function normalizePermission(
   permission: NotificationPermissionsStatus,
   notifications: NotificationsModule,
 ): NotificationPermissionState {
-  if (permission.granted) {
+  const iosStatus = permission.ios?.status;
+
+  if (
+    permission.granted ||
+    iosStatus === notifications.IosAuthorizationStatus.AUTHORIZED
+  ) {
     return 'granted';
   }
 
   if (
-    permission.ios?.status ===
-    notifications.IosAuthorizationStatus.PROVISIONAL
+    iosStatus === notifications.IosAuthorizationStatus.PROVISIONAL ||
+    iosStatus === notifications.IosAuthorizationStatus.EPHEMERAL
   ) {
     return 'provisional';
   }
@@ -54,10 +103,18 @@ async function readPermission(): Promise<PermissionSnapshot> {
 }
 
 export async function getNotificationPermission(): Promise<PermissionSnapshot> {
+  if (usesAndroidExpoGoFallback()) {
+    return readAndroidExpoGoPermission();
+  }
+
   return readPermission();
 }
 
 export async function requestNotificationPermission(): Promise<PermissionSnapshot> {
+  if (usesAndroidExpoGoFallback()) {
+    return requestAndroidExpoGoPermission();
+  }
+
   const notifications = await loadNotificationsModule();
   if (!notifications) return readPermission();
 

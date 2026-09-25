@@ -4,21 +4,10 @@ import { cancelAllScheduledNotifications } from '../platform/notifications/notif
 import { useAuthStore } from './auth.store';
 import { clearRefreshToken } from './token-storage';
 
-let accountDataCleanup: (() => void | Promise<void>) | null = null;
-
-export function registerAccountDataCleanup(
-  cleanup: (() => void | Promise<void>) | null,
-): void {
-  accountDataCleanup = cleanup;
-}
-
 export async function clearLocalSession(): Promise<void> {
   useAuthStore.getState().clearSession();
 
-  await Promise.allSettled([
-    cancelAllScheduledNotifications(),
-    Promise.resolve().then(() => accountDataCleanup?.()),
-  ]);
+  await Promise.allSettled([cancelAllScheduledNotifications()]);
 
   try {
     await clearRefreshToken();

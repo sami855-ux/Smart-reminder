@@ -16,7 +16,7 @@ export default function IndexScreen() {
         accessibilityLabel="Loading Smart Reminder"
         className="flex-1 items-center justify-center bg-canvas"
       >
-        <ActivityIndicator color="#1C1D21" size="large" />
+        <ActivityIndicator color="#007AFF" size="large" />
       </View>
     );
   }

@@ -13,7 +13,6 @@ import { toApiError } from '../api/errors';
 import * as authApi from './auth.api';
 import type { AccountExport, AuthUser } from './auth.schemas';
 import { useAuthStore, type AuthStatus } from './auth.store';
-import { registerAccountDataCleanup } from './session-cleanup';
 
 type AuthContextValue = {
   status: AuthStatus;
@@ -35,11 +34,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-type AuthProviderProps = PropsWithChildren<{
-  onSessionCleared: () => void | Promise<void>;
-}>;
-
-export function AuthProvider({ children, onSessionCleared }: AuthProviderProps) {
+export function AuthProvider({ children }: PropsWithChildren) {
   const status = useAuthStore((state) => state.status);
   const user = useAuthStore((state) => state.user);
   const [restorationMessage, setRestorationMessage] = useState<string | null>(null);
@@ -56,11 +51,6 @@ export function AuthProvider({ children, onSessionCleared }: AuthProviderProps) 
       }
     }
   }, [setRestorationMessage]);
-
-  useEffect(() => {
-    registerAccountDataCleanup(onSessionCleared);
-    return () => registerAccountDataCleanup(null);
-  }, [onSessionCleared]);
 
   useEffect(() => {
     const timeout = setTimeout(() => void retryRestoration(), 0);

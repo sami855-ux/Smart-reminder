@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
@@ -10,16 +9,16 @@ import {
   type RegisterForm,
 } from '../../auth/auth.schemas';
 import { formErrorMessage } from '../../auth/form-error';
+import { AuthScreen } from '../../components/auth/AuthScreen';
 import { Button } from '../../components/ui/Button';
-import { FormMessage } from '../../components/ui/FormMessage';
-import { Screen } from '../../components/ui/Screen';
 import { TextField } from '../../components/ui/TextField';
 import { TextLink } from '../../components/ui/TextLink';
+import { useToast } from '../../components/ui/ToastProvider';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { register } = useAuth();
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { showToast } = useToast();
   const {
     control,
     handleSubmit,
@@ -31,24 +30,36 @@ export default function RegisterScreen() {
   });
 
   const submit = handleSubmit(async ({ email, password }) => {
-    setSubmitError(null);
     try {
       await register({ email, password });
       router.replace('/(auth)/check-email');
     } catch (error) {
-      setSubmitError(formErrorMessage(error));
+      showToast({
+        title: 'Couldn’t create your account',
+        message: formErrorMessage(error),
+        tone: 'error',
+      });
     }
   });
 
   return (
-    <Screen
-      description="Create one secure account for your reminder preferences and future devices."
-      eyebrow="Create account"
-      title="Start with the essentials"
+    <AuthScreen
+      description="Set up your account to keep reminders secure and available across devices."
+      footer={
+        <View className="flex-row flex-wrap items-center justify-center gap-1">
+          <Text className="text-sm font-normal text-muted-ink">
+            Already have an account?
+          </Text>
+          <TextLink
+            label="Sign in"
+            onPress={() => router.replace('/(auth)/sign-in')}
+          />
+        </View>
+      }
+      onBack={() => router.back()}
+      title="Create your account"
     >
-      <View className="gap-4">
-        <FormMessage message={submitError} />
-
+      <View className="gap-5">
         <Controller
           control={control}
           name="email"
@@ -58,9 +69,10 @@ export default function RegisterScreen() {
               autoComplete="email"
               error={fieldState.error?.message}
               keyboardType="email-address"
-              label="Email"
+              label="Email address"
               onBlur={onBlur}
               onChangeText={onChange}
+              placeholder="name@example.com"
               returnKeyType="next"
               textContentType="emailAddress"
               value={value}
@@ -79,6 +91,7 @@ export default function RegisterScreen() {
               label="Password"
               onBlur={onBlur}
               onChangeText={onChange}
+              placeholder="Create a password"
               secureTextEntry
               textContentType="newPassword"
               value={value}
@@ -98,6 +111,7 @@ export default function RegisterScreen() {
               onBlur={onBlur}
               onChangeText={onChange}
               onSubmitEditing={() => void submit()}
+              placeholder="Enter it again"
               returnKeyType="done"
               secureTextEntry
               textContentType="newPassword"
@@ -106,27 +120,18 @@ export default function RegisterScreen() {
           )}
         />
 
-        <Text className="font-inter text-[13px] leading-5 text-muted-ink">
-          Use at least 12 characters. Your password is sent only to the Smart
-          Reminder API over HTTPS and is never stored by the app.
+        <Text className="text-[13px] font-normal leading-5 text-muted-ink">
+          Use at least 12 characters. Avoid names and commonly used passwords.
         </Text>
 
-        <Button
-          label="Create account"
-          loading={isSubmitting}
-          onPress={() => void submit()}
-        />
+        <View className="mt-1">
+          <Button
+            label="Create account"
+            loading={isSubmitting}
+            onPress={() => void submit()}
+          />
+        </View>
       </View>
-
-      <View className="mt-8 flex-row flex-wrap items-center justify-center gap-1">
-        <Text className="font-inter text-sm text-muted-ink">
-          Already have an account?
-        </Text>
-        <TextLink
-          label="Sign in"
-          onPress={() => router.replace('/(auth)/sign-in')}
-        />
-      </View>
-    </Screen>
+    </AuthScreen>
   );
 }

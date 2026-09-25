@@ -18,15 +18,18 @@ export function TextField({
   label,
   error,
   secureTextEntry = false,
+  onBlur,
+  onFocus,
   ...inputProps
 }: TextFieldProps) {
   const [revealed, setRevealed] = useState(false);
+  const [focused, setFocused] = useState(false);
   const inputId = inputProps.nativeID ?? label.toLowerCase().replaceAll(' ', '-');
 
   return (
     <View>
       <Text
-        className="mb-2 font-inter-medium text-[13px] text-ink"
+        className="mb-2 text-[13px] font-medium text-muted-ink"
         nativeID={`${inputId}-label`}
       >
         {label}
@@ -34,18 +37,31 @@ export function TextField({
       <View
         className={cn(
           'min-h-[54px] flex-row items-center rounded-xl border bg-paper px-4',
-          error ? 'border-urgent' : 'border-taupe/60',
+          error
+            ? 'border-urgent'
+            : focused
+              ? 'border-intelligence'
+              : 'border-taupe',
         )}
       >
         <TextInput
           {...inputProps}
           accessibilityLabelledBy={`${inputId}-label`}
           aria-describedby={error ? `${inputId}-error` : undefined}
-          className="min-h-[52px] flex-1 font-inter text-[15px] text-ink"
+          className="min-h-[50px] flex-1 text-base font-normal text-ink"
+          clearButtonMode={secureTextEntry ? 'never' : 'while-editing'}
           nativeID={inputId}
-          placeholderTextColor="#B8B4AA"
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          placeholderTextColor="#8E8E93"
           secureTextEntry={secureTextEntry && !revealed}
-          selectionColor="#1C1D21"
+          selectionColor="#007AFF"
         />
         {secureTextEntry ? (
           <Pressable
@@ -54,7 +70,7 @@ export function TextField({
             className="min-h-11 justify-center pl-3 active:opacity-70"
             onPress={() => setRevealed((current) => !current)}
           >
-            <Text className="font-inter-medium text-[13px] text-muted-ink">
+            <Text className="text-sm font-medium text-intelligence-dark">
               {revealed ? 'Hide' : 'Show'}
             </Text>
           </Pressable>
@@ -63,7 +79,7 @@ export function TextField({
       {error ? (
         <Text
           accessibilityRole="alert"
-          className="mt-1.5 font-inter text-[13px] leading-[18px] text-urgent"
+          className="mt-1.5 text-[13px] font-normal leading-[18px] text-urgent"
           nativeID={`${inputId}-error`}
         >
           {error}

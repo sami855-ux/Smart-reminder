@@ -33,20 +33,20 @@ export function Screen({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="flex-grow px-6 pb-6 pt-8">
+          <View className="w-full max-w-[560px] flex-grow self-center px-5 pb-8 pt-4">
             <View className="mb-7">
               {eyebrow ? (
-                <Text className="mb-2 font-inter-medium text-[13px] uppercase text-muted-ink">
+                <Text className="mb-2 text-[15px] font-medium text-intelligence">
                   {eyebrow}
                 </Text>
               ) : null}
               <Text
                 accessibilityRole="header"
-                className="font-inter-semibold text-[32px] leading-[38px] text-ink"
+                className="max-w-[460px] text-[34px] font-bold leading-[41px] text-ink"
               >
                 {title}
               </Text>
-              <Text className="mt-3 font-inter text-base leading-6 text-muted-ink">
+              <Text className="mt-2 max-w-[500px] text-[17px] font-normal leading-6 text-muted-ink/80">
                 {description}
               </Text>
             </View>
@@ -54,8 +54,10 @@ export function Screen({
           </View>
         </ScrollView>
         {footer ? (
-          <View className="gap-2.5 border-t border-taupe/50 bg-canvas px-6 py-4">
-            {footer}
+          <View className="border-t border-taupe bg-paper px-5 py-4">
+            <View className="w-full max-w-[520px] gap-2.5 self-center">
+              {footer}
+            </View>
           </View>
         ) : null}
       </KeyboardAvoidingView>

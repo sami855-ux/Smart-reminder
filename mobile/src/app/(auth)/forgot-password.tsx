@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
@@ -10,11 +9,11 @@ import {
   type ForgotPasswordForm,
 } from '../../auth/auth.schemas';
 import { formErrorMessage } from '../../auth/form-error';
+import { AuthScreen } from '../../components/auth/AuthScreen';
 import { Button } from '../../components/ui/Button';
-import { FormMessage } from '../../components/ui/FormMessage';
-import { Screen } from '../../components/ui/Screen';
 import { TextField } from '../../components/ui/TextField';
 import { TextLink } from '../../components/ui/TextLink';
+import { useToast } from '../../components/ui/ToastProvider';
 
 const GENERIC_CONFIRMATION =
   'If an eligible account exists for that address, password-reset instructions are on the way.';
@@ -22,8 +21,7 @@ const GENERIC_CONFIRMATION =
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { requestPasswordReset } = useAuth();
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const { showToast } = useToast();
   const {
     control,
     handleSubmit,
@@ -35,61 +33,65 @@ export default function ForgotPasswordScreen() {
   });
 
   const submit = handleSubmit(async ({ email }) => {
-    setSubmitError(null);
     try {
       await requestPasswordReset(email);
-      setSubmitted(true);
+      showToast({
+        title: 'Check your inbox',
+        message: GENERIC_CONFIRMATION,
+        tone: 'success',
+      });
     } catch (error) {
-      setSubmitError(formErrorMessage(error));
+      showToast({
+        title: 'Couldn’t send the email',
+        message: formErrorMessage(error),
+        tone: 'error',
+      });
     }
   });
 
   return (
-    <Screen
-      description="Enter your email and we’ll send recovery instructions when the account is eligible."
-      eyebrow="Account recovery"
+    <AuthScreen
+      description="Enter the email address connected to your account. We’ll send a secure reset link if the account is eligible."
+      footer={
+        <View className="items-center">
+          <TextLink
+            label="Back to sign in"
+            onPress={() => router.replace('/(auth)/sign-in')}
+          />
+        </View>
+      }
+      onBack={() => router.back()}
       title="Reset your password"
     >
-      <View className="gap-4">
-        <FormMessage
-          message={submitted ? GENERIC_CONFIRMATION : submitError}
-          tone={submitted ? 'success' : 'error'}
-        />
-
-        {!submitted ? (
-          <>
-            <Controller
-              control={control}
-              name="email"
-              render={({ field: { onBlur, onChange, value }, fieldState }) => (
-                <TextField
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  error={fieldState.error?.message}
-                  keyboardType="email-address"
-                  label="Email"
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  onSubmitEditing={() => void submit()}
-                  returnKeyType="send"
-                  textContentType="emailAddress"
-                  value={value}
-                />
-              )}
+      <View className="gap-5">
+        <Controller
+          control={control}
+          name="email"
+          render={({ field: { onBlur, onChange, value }, fieldState }) => (
+            <TextField
+              autoCapitalize="none"
+              autoComplete="email"
+              error={fieldState.error?.message}
+              keyboardType="email-address"
+              label="Email address"
+              onBlur={onBlur}
+              onChangeText={onChange}
+              placeholder="name@example.com"
+              onSubmitEditing={() => void submit()}
+              returnKeyType="send"
+              textContentType="emailAddress"
+              value={value}
             />
-            <Button
-              label="Send recovery instructions"
-              loading={isSubmitting}
-              onPress={() => void submit()}
-            />
-          </>
-        ) : null}
-
-        <TextLink
-          label="Back to sign in"
-          onPress={() => router.replace('/(auth)/sign-in')}
+          )}
         />
+        <View className="mt-1">
+          <Button
+            label="Send reset link"
+            loading={isSubmitting}
+            onPress={() => void submit()}
+          />
+        </View>
       </View>
-    </Screen>
+    </AuthScreen>
   );
 }

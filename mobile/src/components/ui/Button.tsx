@@ -30,10 +30,10 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       className={cn(
-        'min-h-[54px] items-center justify-center rounded-2xl px-5 active:opacity-70',
-        variant === 'primary' && 'bg-ink',
-        variant === 'secondary' && 'border border-taupe bg-paper',
-        variant === 'text' && 'min-h-[46px] bg-transparent',
+        'min-h-[52px] items-center justify-center rounded-full px-6 active:opacity-65',
+        variant === 'primary' && 'bg-intelligence',
+        variant === 'secondary' && 'bg-secondary-fill',
+        variant === 'text' && 'min-h-11 bg-transparent',
         isDisabled && 'opacity-50',
       )}
       disabled={isDisabled}
@@ -42,15 +42,19 @@ export function Button({
       <View className="flex-row items-center gap-2.5">
         {loading ? (
           <ActivityIndicator
-            color={variant === 'primary' ? '#FFFFFF' : '#1C1D21'}
+            color={variant === 'primary' ? '#FFFFFF' : '#007AFF'}
           />
         ) : (
           icon
         )}
         <Text
           className={cn(
-            'font-inter-semibold text-base',
-            variant === 'primary' ? 'text-white' : 'text-ink',
+            'text-[17px] font-semibold',
+            variant === 'primary'
+              ? 'text-white'
+              : variant === 'secondary'
+                ? 'text-intelligence-dark'
+                : 'text-intelligence',
           )}
         >
           {label}

@@ -73,9 +73,9 @@ export default function PreferencesScreen() {
         }
         title="Set your local time"
       >
-        <View className="overflow-hidden rounded-2xl border border-taupe/50 bg-paper">
+        <View className="overflow-hidden rounded-3xl border border-taupe bg-paper">
           <View className="p-5">
-            <Text className="mb-3 font-inter-medium text-[13px] text-muted-ink">
+            <Text className="mb-3 font-medium text-[13px] text-muted-ink">
               Locale
             </Text>
             <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-2">
@@ -86,17 +86,17 @@ export default function PreferencesScreen() {
                     accessibilityRole="radio"
                     accessibilityState={{ selected }}
                     className={cn(
-                      'min-h-11 justify-center rounded-xl border px-3.5 active:opacity-70',
+                      'min-h-11 justify-center rounded-xl border px-3.5 active:opacity-80',
                       selected
-                        ? 'border-ink bg-ink'
-                        : 'border-taupe/60 bg-canvas',
+                        ? 'border-intelligence bg-intelligence'
+                        : 'border-taupe bg-canvas',
                     )}
                     key={option}
                     onPress={() => setLocale(option)}
                   >
                     <Text
                       className={cn(
-                        'font-inter-medium text-[15px]',
+                        'font-medium text-[15px]',
                         selected ? 'text-white' : 'text-ink',
                       )}
                     >
@@ -111,24 +111,24 @@ export default function PreferencesScreen() {
           <View className="h-px bg-taupe/40" />
 
           <View className="p-5">
-            <Text className="mb-3 font-inter-medium text-[13px] text-muted-ink">
+            <Text className="mb-3 font-medium text-[13px] text-muted-ink">
               Timezone
             </Text>
             <Pressable
               accessibilityHint="Opens a searchable list of IANA timezones"
               accessibilityRole="button"
-              className="min-h-[62px] flex-row items-center rounded-xl bg-canvas px-4 active:opacity-70"
+              className="min-h-[64px] flex-row items-center rounded-2xl border border-taupe bg-canvas px-4 active:opacity-80"
               onPress={() => setTimezonePickerOpen(true)}
             >
               <View className="flex-1">
-                <Text className="font-mono-medium text-[15px] text-ink">
+                <Text className="font-semibold text-[15px] text-ink">
                   {timezone}
                 </Text>
-                <Text className="mt-1 font-inter text-xs text-muted-ink">
+                <Text className="mt-1 font-normal text-xs text-muted-ink">
                   IANA timezone
                 </Text>
               </View>
-              <Text aria-hidden className="font-inter text-3xl leading-8 text-ink">
+              <Text aria-hidden className="font-normal text-3xl leading-8 text-intelligence">
                 ›
               </Text>
             </Pressable>
@@ -137,12 +137,12 @@ export default function PreferencesScreen() {
           <View className="h-px bg-taupe/40" />
 
           <View className="p-5">
-            <Text className="mb-3 font-inter-medium text-[13px] text-muted-ink">
+            <Text className="mb-3 font-medium text-[13px] text-muted-ink">
               Time display
             </Text>
             <View
               accessibilityRole="radiogroup"
-              className="flex-row rounded-xl bg-canvas p-1"
+              className="flex-row rounded-2xl bg-canvas p-1"
             >
               {(['12-hour', '24-hour'] as const).map((option) => {
                 const selected = option === timeFormat;
@@ -151,15 +151,15 @@ export default function PreferencesScreen() {
                     accessibilityRole="radio"
                     accessibilityState={{ selected }}
                     className={cn(
-                      'min-h-[46px] flex-1 items-center justify-center rounded-lg active:opacity-70',
-                      selected && 'bg-ink',
+                      'min-h-[46px] flex-1 items-center justify-center rounded-xl active:opacity-80',
+                      selected && 'bg-intelligence',
                     )}
                     key={option}
                     onPress={() => setTimeFormat(option)}
                   >
                     <Text
                       className={cn(
-                        'font-mono-medium text-[15px]',
+                        'font-semibold text-[15px]',
                         selected ? 'text-white' : 'text-muted-ink',
                       )}
                     >
@@ -172,9 +172,11 @@ export default function PreferencesScreen() {
           </View>
         </View>
 
-        <View className="mt-4 border-l-2 border-ink bg-paper px-4 py-3.5">
-          <Text className="font-inter-medium text-xs text-muted-ink">Preview</Text>
-          <Text className="mt-1.5 font-mono-medium text-[15px] leading-6 text-ink">
+        <View className="mt-4 rounded-2xl bg-intelligence-soft px-4 py-3.5">
+          <Text className="font-semibold text-xs text-intelligence-dark">
+            LIVE PREVIEW
+          </Text>
+          <Text className="mt-1.5 font-semibold text-[15px] leading-6 text-ink">
             {formatPreferenceExample(preferences)}
           </Text>
         </View>
@@ -187,12 +189,12 @@ export default function PreferencesScreen() {
         visible={timezonePickerOpen}
       >
         <SafeAreaView className="flex-1 bg-canvas">
-          <View className="flex-row items-center justify-between border-b border-taupe/50 px-5 py-4">
+          <View className="flex-row items-center justify-between border-b border-taupe px-5 py-4">
             <View>
-              <Text className="font-inter-semibold text-[22px] text-ink">
+              <Text className="font-semibold text-[22px] text-ink">
                 Choose timezone
               </Text>
-              <Text className="mt-0.5 font-inter text-[13px] text-muted-ink">
+              <Text className="mt-0.5 font-normal text-[13px] text-muted-ink">
                 IANA timezone identifiers
               </Text>
             </View>
@@ -201,17 +203,17 @@ export default function PreferencesScreen() {
               className="min-h-11 justify-center px-2 active:opacity-70"
               onPress={() => setTimezonePickerOpen(false)}
             >
-              <Text className="font-inter-semibold text-base text-ink">Done</Text>
+              <Text className="font-semibold text-base text-intelligence-dark">Done</Text>
             </Pressable>
           </View>
           <TextInput
             accessibilityLabel="Search timezones"
             autoCapitalize="none"
             autoCorrect={false}
-            className="mx-4 my-4 min-h-[50px] rounded-xl border border-taupe/60 bg-paper px-4 font-inter text-base text-ink"
+            className="mx-4 my-4 min-h-[52px] rounded-2xl border border-taupe bg-paper px-4 font-normal text-base text-ink"
             onChangeText={setTimezoneSearch}
             placeholder="Search city or region"
-            placeholderTextColor="#B8B4AA"
+            placeholderTextColor="#8E8E93"
             value={timezoneSearch}
           />
           <FlatList
@@ -221,7 +223,7 @@ export default function PreferencesScreen() {
             keyExtractor={(item) => item}
             ListEmptyComponent={
               <View className="items-center px-6 py-12">
-                <Text className="font-inter-medium text-[15px] text-ink">
+                <Text className="font-medium text-[15px] text-ink">
                   No timezone found
                 </Text>
                 <Pressable
@@ -229,7 +231,7 @@ export default function PreferencesScreen() {
                   className="mt-3 min-h-11 justify-center active:opacity-70"
                   onPress={() => setTimezoneSearch('')}
                 >
-                  <Text className="font-inter-semibold text-sm text-ink underline">
+                  <Text className="font-semibold text-sm text-ink underline">
                     Clear search
                   </Text>
                 </Pressable>
@@ -242,8 +244,8 @@ export default function PreferencesScreen() {
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
                   className={cn(
-                    'min-h-[54px] flex-row items-center justify-between border-b border-taupe/30 px-5 active:opacity-70',
-                    selected && 'bg-paper',
+                    'min-h-[56px] flex-row items-center justify-between border-b border-taupe px-5 active:opacity-80',
+                    selected && 'bg-intelligence-soft',
                   )}
                   onPress={() => {
                     setTimezone(item);
@@ -253,14 +255,16 @@ export default function PreferencesScreen() {
                 >
                   <Text
                     className={cn(
-                      'flex-1 font-mono text-sm text-ink',
-                      selected && 'font-mono-medium',
+                      'flex-1 font-normal text-sm text-ink',
+                      selected && 'font-semibold',
                     )}
                   >
                     {item.replaceAll('_', ' ')}
                   </Text>
                   {selected ? (
-                    <Text className="font-inter-semibold text-lg text-success">✓</Text>
+                    <View className="size-7 items-center justify-center rounded-full bg-intelligence">
+                      <Text className="font-semibold text-sm text-white">✓</Text>
+                    </View>
                   ) : null}
                 </Pressable>
               );

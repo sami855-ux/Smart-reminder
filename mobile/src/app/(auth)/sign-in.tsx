@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
@@ -10,17 +10,17 @@ import {
   loginFormSchema,
   type LoginForm,
 } from '../../auth/auth.schemas';
+import { AuthScreen } from '../../components/auth/AuthScreen';
 import { Button } from '../../components/ui/Button';
-import { FormMessage } from '../../components/ui/FormMessage';
-import { Screen } from '../../components/ui/Screen';
 import { TextField } from '../../components/ui/TextField';
 import { TextLink } from '../../components/ui/TextLink';
+import { useToast } from '../../components/ui/ToastProvider';
 
 export default function SignInScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ message?: string }>();
   const { login } = useAuth();
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { showToast } = useToast();
   const {
     control,
     handleSubmit,
@@ -31,26 +31,43 @@ export default function SignInScreen() {
     mode: 'onBlur',
   });
 
+  useEffect(() => {
+    if (!params.message) return;
+    showToast({
+      title: 'Account updated',
+      message: params.message,
+      tone: 'success',
+    });
+  }, [params.message, showToast]);
+
   const submit = handleSubmit(async (values) => {
-    setSubmitError(null);
     try {
       await login(values);
       router.replace('/');
     } catch (error) {
-      setSubmitError(formErrorMessage(error));
+      showToast({
+        title: 'Couldn’t sign you in',
+        message: formErrorMessage(error),
+        tone: 'error',
+      });
     }
   });
 
   return (
-    <Screen
-      description="Use the account connected to your reminders."
-      eyebrow="Smart Reminder"
-      title="Welcome back"
+    <AuthScreen
+      description="Use your email and password to continue to your reminders."
+      footer={
+        <View className="flex-row flex-wrap items-center justify-center gap-1">
+          <Text className="text-sm font-normal text-muted-ink">New here?</Text>
+          <TextLink
+            label="Create an account"
+            onPress={() => router.push('/(auth)/register')}
+          />
+        </View>
+      }
+      title="Sign in"
     >
-      <View className="gap-4">
-        <FormMessage message={params.message ?? null} tone="success" />
-        <FormMessage message={submitError} />
-
+      <View className="gap-5">
         <Controller
           control={control}
           name="email"
@@ -60,9 +77,10 @@ export default function SignInScreen() {
               autoComplete="email"
               error={fieldState.error?.message}
               keyboardType="email-address"
-              label="Email"
+              label="Email address"
               onBlur={onBlur}
               onChangeText={onChange}
+              placeholder="name@example.com"
               returnKeyType="next"
               textContentType="emailAddress"
               value={value}
@@ -82,6 +100,7 @@ export default function SignInScreen() {
               onBlur={onBlur}
               onChangeText={onChange}
               onSubmitEditing={() => void submit()}
+              placeholder="Enter your password"
               returnKeyType="done"
               secureTextEntry
               textContentType="password"
@@ -90,27 +109,21 @@ export default function SignInScreen() {
           )}
         />
 
-        <TextLink
-          label="Forgot password?"
-          onPress={() => router.push('/(auth)/forgot-password')}
-        />
+        <View className="items-end">
+          <TextLink
+            label="Forgot password?"
+            onPress={() => router.push('/(auth)/forgot-password')}
+          />
+        </View>
 
-        <Button
-          label="Sign in"
-          loading={isSubmitting}
-          onPress={() => void submit()}
-        />
+        <View className="mt-1">
+          <Button
+            label="Sign in"
+            loading={isSubmitting}
+            onPress={() => void submit()}
+          />
+        </View>
       </View>
-
-      <View className="mt-8 flex-row flex-wrap items-center justify-center gap-1">
-        <Text className="font-inter text-sm text-muted-ink">
-          New to Smart Reminder?
-        </Text>
-        <TextLink
-          label="Create an account"
-          onPress={() => router.push('/(auth)/register')}
-        />
-      </View>
-    </Screen>
+    </AuthScreen>
   );
 }

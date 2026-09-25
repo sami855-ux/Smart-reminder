@@ -14,7 +14,7 @@ export function TextLink({ label, onPress, accessibilityHint }: TextLinkProps) {
       className="min-h-11 justify-center self-start active:opacity-70"
       onPress={onPress}
     >
-      <Text className="font-inter-semibold text-sm text-ink underline">
+      <Text className="text-[15px] font-medium text-intelligence">
         {label}
       </Text>
     </Pressable>

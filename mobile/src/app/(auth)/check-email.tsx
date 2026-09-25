@@ -4,48 +4,51 @@ import { Text, View } from 'react-native';
 
 import { useAuth } from '../../auth/AuthProvider';
 import { formErrorMessage } from '../../auth/form-error';
+import { AuthScreen } from '../../components/auth/AuthScreen';
 import { Button } from '../../components/ui/Button';
-import { FormMessage } from '../../components/ui/FormMessage';
-import { Screen } from '../../components/ui/Screen';
+import { useToast } from '../../components/ui/ToastProvider';
 
 export default function CheckEmailScreen() {
   const router = useRouter();
   const { user, requestEmailVerification } = useAuth();
+  const { showToast } = useToast();
   const [sending, setSending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   async function resend() {
     setSending(true);
-    setMessage(null);
-    setError(null);
     try {
       await requestEmailVerification();
-      setMessage('A fresh verification link has been requested.');
+      showToast({
+        title: 'Verification email sent',
+        message: 'We sent a fresh link. Check your inbox and spam folder.',
+        tone: 'success',
+      });
     } catch (requestError) {
-      setError(formErrorMessage(requestError));
+      showToast({
+        title: 'Couldn’t resend the email',
+        message: formErrorMessage(requestError),
+        tone: 'error',
+      });
     } finally {
       setSending(false);
     }
   }
 
   return (
-    <Screen
+    <AuthScreen
       description="Open the verification link on this device. The link is one-time and expires for your security."
-      eyebrow="Verify your email"
+      onBack={() => router.back()}
       title="Check your inbox"
     >
       <View className="gap-4">
-        <View className="border-l-2 border-ink bg-paper px-4 py-3.5">
-          <Text className="font-inter text-sm leading-5 text-muted-ink">
+        <View className="rounded-2xl bg-paper px-4 py-3.5">
+          <Text className="text-[13px] font-normal leading-5 text-muted-ink/70">
             Verification address
           </Text>
-          <Text className="mt-1 font-inter-medium text-[15px] text-ink">
+          <Text className="mt-1 text-[17px] font-medium text-ink">
             {user?.email ?? 'Your account email'}
           </Text>
         </View>
-        <FormMessage message={message} tone="success" />
-        <FormMessage message={error} />
         <Button
           label="Resend verification email"
           loading={sending}
@@ -57,6 +60,6 @@ export default function CheckEmailScreen() {
           onPress={() => router.replace('/')}
         />
       </View>
-    </Screen>
+    </AuthScreen>
   );
 }

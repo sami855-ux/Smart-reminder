@@ -84,39 +84,44 @@ export default function NotificationsScreen() {
       footer={footer}
       title="Stay on time"
     >
-      <View className="mb-5 flex-row">
+      <View className="mb-5 overflow-hidden rounded-3xl bg-intelligence-soft p-4">
+        <Text className="mb-3 font-semibold text-xs text-intelligence-dark">
+          NOTIFICATION PREVIEW
+        </Text>
+        <View className="flex-row">
         <View className="w-[72px] items-start pt-4">
-          <Text className="font-mono-medium text-[15px] text-ink">09:00</Text>
-          <Text className="mt-1 font-mono text-xs text-muted-ink">AM</Text>
+          <Text className="font-semibold text-[15px] text-intelligence-dark">09:00</Text>
+          <Text className="mt-1 font-normal text-xs text-muted-ink">AM</Text>
         </View>
         <View className="mr-4 items-center">
-          <View className="size-2.5 rounded-full bg-ink" />
+          <View className="size-2.5 rounded-full bg-intelligence" />
           <View className="w-px flex-1 bg-taupe" />
         </View>
-        <View className="mb-2 flex-1 rounded-2xl border border-taupe/50 bg-paper p-4">
-          <Text className="font-inter-semibold text-[15px] text-ink">
+        <View className="flex-1 rounded-2xl border border-taupe bg-paper p-4">
+          <Text className="font-semibold text-[15px] text-ink">
             Smart Reminder
           </Text>
-          <Text className="mt-1 font-inter text-sm leading-5 text-muted-ink">
+          <Text className="mt-1 font-normal text-sm leading-5 text-muted-ink">
             Your next reminder is ready when you need it.
           </Text>
-          <Text className="mt-3 font-mono text-xs text-muted-ink">now</Text>
+          <Text className="mt-3 font-normal text-xs text-muted-ink">now</Text>
+        </View>
         </View>
       </View>
 
-      <View className="overflow-hidden rounded-2xl border border-taupe/50 bg-paper">
+      <View className="overflow-hidden rounded-3xl border border-taupe bg-paper">
         <Benefit
           detail="Receive alerts while Smart Reminder is in the background."
           number="01"
           title="Timely"
         />
-        <View className="ml-[68px] h-px bg-taupe/40" />
+        <View className="ml-[68px] h-px bg-taupe" />
         <Benefit
           detail="Change notification access at any time in system settings."
           number="02"
           title="Under your control"
         />
-        <View className="ml-[68px] h-px bg-taupe/40" />
+        <View className="ml-[68px] h-px bg-taupe" />
         <Benefit
           detail="Choosing Not now never blocks access to the app."
           number="03"
@@ -127,12 +132,12 @@ export default function NotificationsScreen() {
       {allowed ? (
         <View
           accessibilityRole="alert"
-          className="mt-4 border-l-2 border-success bg-paper px-4 py-3.5"
+          className="mt-4 rounded-2xl border border-success/20 bg-success-soft px-4 py-3.5"
         >
-          <Text className="font-inter-semibold text-[15px] text-ink">
+          <Text className="font-semibold text-[15px] text-ink">
             Notifications are enabled
           </Text>
-          <Text className="mt-1 font-inter text-sm leading-5 text-muted-ink">
+          <Text className="mt-1 font-normal text-sm leading-5 text-muted-ink">
             This device currently allows Smart Reminder to show alerts.
           </Text>
         </View>
@@ -144,7 +149,7 @@ export default function NotificationsScreen() {
           />
         </View>
       ) : (
-        <Text className="mx-2 mt-4 text-center font-inter text-[13px] leading-5 text-muted-ink">
+        <Text className="mx-2 mt-4 text-center font-normal text-[13px] leading-5 text-muted-ink">
           The system permission prompt appears only after you tap Enable
           notifications.
         </Text>
@@ -164,12 +169,12 @@ function Benefit({
 }) {
   return (
     <View className="flex-row gap-4 p-4">
-      <Text className="w-9 font-mono-medium text-[13px] text-muted-ink">
-        {number}
-      </Text>
+      <View className="size-9 items-center justify-center rounded-xl bg-intelligence-soft">
+        <Text className="font-semibold text-xs text-intelligence-dark">{number}</Text>
+      </View>
       <View className="flex-1">
-        <Text className="font-inter-semibold text-[15px] text-ink">{title}</Text>
-        <Text className="mt-1 font-inter text-sm leading-5 text-muted-ink">
+        <Text className="font-semibold text-[15px] text-ink">{title}</Text>
+        <Text className="mt-1 font-normal text-sm leading-5 text-muted-ink">
           {detail}
         </Text>
       </View>

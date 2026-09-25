@@ -16,7 +16,6 @@ import {
 } from '../platform/notifications/notification-permission';
 import {
   createInitialOnboardingState,
-  clearOnboardingState,
   loadOnboardingState,
   saveOnboardingState,
 } from './onboarding-storage';
@@ -33,7 +32,6 @@ type OnboardingContextValue = {
   finishOnboarding: () => Promise<void>;
   reconcilePermission: () => Promise<NotificationPermissionState>;
   askForPermission: () => Promise<NotificationPermissionState>;
-  resetOnboarding: () => Promise<void>;
 };
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -87,13 +85,6 @@ export function OnboardingProvider({ children }: PropsWithChildren) {
     await persist({ ...stateRef.current, completed: true });
   }, [persist]);
 
-  const resetOnboarding = useCallback(async () => {
-    const next = createInitialOnboardingState();
-    stateRef.current = next;
-    setState(next);
-    await clearOnboardingState();
-  }, []);
-
   useEffect(() => {
     let active = true;
 
@@ -138,7 +129,6 @@ export function OnboardingProvider({ children }: PropsWithChildren) {
       finishOnboarding,
       reconcilePermission,
       askForPermission,
-      resetOnboarding,
     }),
     [
       hydrated,
@@ -147,7 +137,6 @@ export function OnboardingProvider({ children }: PropsWithChildren) {
       finishOnboarding,
       reconcilePermission,
       askForPermission,
-      resetOnboarding,
     ],
   );
 

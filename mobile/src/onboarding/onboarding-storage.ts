@@ -40,7 +40,3 @@ export async function loadOnboardingState(): Promise<OnboardingState> {
 export async function saveOnboardingState(state: OnboardingState): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
-
-export async function clearOnboardingState(): Promise<void> {
-  await AsyncStorage.removeItem(STORAGE_KEY);
-}

@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
-import { Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../components/ui/Button';
 import { PermissionWarning } from '../components/ui/PermissionWarning';
-import { Screen } from '../components/ui/Screen';
-import { useAuth } from '../auth/AuthProvider';
-import { formatPreferenceExample } from '../onboarding/device-preferences';
 import { useOnboarding } from '../onboarding/onboarding-context';
 import {
   notificationPermissionAllowsAlerts,
@@ -21,6 +20,10 @@ export default function HomeScreen() {
   const permissionAllowed = notificationPermissionAllowsAlerts(
     state.notificationPermission,
   );
+  const dateLabel = useMemo(
+    () => formatToday(state.preferences.locale),
+    [state.preferences.locale],
+  );
 
   if (status !== 'authenticated' || !user) return <Redirect href="/" />;
 
@@ -34,96 +37,129 @@ export default function HomeScreen() {
   }
 
   return (
-    <Screen
-      description="Your regional preferences and notification access are ready."
-      eyebrow="Setup complete"
-      title="Welcome to Smart Reminder"
-    >
-      {!permissionAllowed ? (
-        <PermissionWarning
-          onOpenSettings={() => void openNotificationSettings()}
-          state={state.notificationPermission}
-        />
-      ) : (
-        <View
-          accessibilityRole="alert"
-          className="border-l-2 border-success bg-paper px-4 py-3.5"
-        >
-          <Text className="font-inter-semibold text-[15px] text-ink">
-            Notifications enabled
+    <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
+      <ScrollView
+        alwaysBounceVertical={false}
+        className="flex-1"
+        contentContainerClassName="pb-12"
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="w-full max-w-[680px] self-center px-5">
+          <View className="flex-row items-start justify-between pb-5 pt-2">
+            <View className="flex-1 pr-4">
+              <Text className="text-[15px] font-medium text-subtle-ink">
+                {dateLabel}
+              </Text>
+              <Text
+                accessibilityRole="header"
+                className="mt-0.5 text-[34px] font-bold leading-[41px] tracking-[-0.8px] text-ink"
+              >
+                Today
+              </Text>
+            </View>
+
+            <Pressable
+              accessibilityHint="Opens your account and security settings"
+              accessibilityLabel="Account and settings"
+              accessibilityRole="button"
+              className="size-11 items-center justify-center rounded-full bg-intelligence-soft active:opacity-60"
+              onPress={() => router.push('/account')}
+            >
+              <Text className="text-[17px] font-semibold uppercase text-intelligence">
+                {user.email.slice(0, 1)}
+              </Text>
+            </Pressable>
+          </View>
+
+          {!permissionAllowed ? (
+            <View className="mb-4">
+              <PermissionWarning
+                onOpenSettings={() => void openNotificationSettings()}
+                state={state.notificationPermission}
+              />
+            </View>
+          ) : null}
+
+          <View className="items-center rounded-[24px] bg-paper px-7 py-10">
+            <View className="size-16 items-center justify-center rounded-full bg-success-soft">
+              <Text className="text-[28px] font-medium text-success">✓</Text>
+            </View>
+            <Text className="mt-5 text-center text-[22px] font-semibold tracking-[-0.3px] text-ink">
+              No reminders today
+            </Text>
+            <Text className="mt-2 max-w-[300px] text-center text-[15px] font-normal leading-[22px] text-muted-ink/70">
+              Your schedule is clear. Upcoming reminders will appear here.
+            </Text>
+          </View>
+
+          <Text className="mb-2 ml-4 mt-7 text-[13px] font-medium text-muted-ink/60">
+            APP STATUS
           </Text>
-          <Text className="mt-1 font-inter text-sm leading-5 text-muted-ink">
-            Smart Reminder is allowed to show alerts on this device.
-          </Text>
+          <View className="overflow-hidden rounded-2xl bg-paper">
+            <StatusRow
+              detail={permissionAllowed ? 'On' : 'Needs attention'}
+              detailTone={permissionAllowed ? 'positive' : 'warning'}
+              label="Notifications"
+            />
+            <View className="ml-4 h-px bg-taupe/50" />
+            <StatusRow detail={state.preferences.timezone} label="Time zone" />
+          </View>
+
+          <View className="mt-4">
+            <Button
+              label="Refresh notification status"
+              loading={checking}
+              onPress={() => void checkAgain()}
+              variant="secondary"
+            />
+          </View>
         </View>
-      )}
-
-      <View className="mt-5 overflow-hidden rounded-2xl border border-taupe/50 bg-paper">
-        <View className="px-5 pb-2 pt-5">
-          <Text className="font-inter-semibold text-lg text-ink">
-            Your preferences
-          </Text>
-        </View>
-        <PreferenceRow label="Locale" value={state.preferences.locale} />
-        <PreferenceRow label="Timezone" mono value={state.preferences.timezone} />
-        <PreferenceRow
-          label="Time display"
-          mono
-          value={state.preferences.timeFormat}
-        />
-        <View className="m-4 border-l-2 border-ink bg-canvas px-4 py-3">
-          <Text className="font-inter-medium text-xs text-muted-ink">Example</Text>
-          <Text className="mt-1 font-mono-medium text-[15px] leading-6 text-ink">
-            {formatPreferenceExample(state.preferences)}
-          </Text>
-        </View>
-      </View>
-
-      <View className="mt-4">
-        <Button
-          label="Check notification access again"
-          loading={checking}
-          onPress={() => void checkAgain()}
-          variant="secondary"
-        />
-      </View>
-
-      <View className="mt-3">
-        <Button
-          label="Account and security"
-          onPress={() => router.push('/account')}
-          variant="text"
-        />
-      </View>
-
-      <Text className="mt-4 text-center font-inter text-xs leading-[18px] text-muted-ink">
-        Reminder creation is intentionally outside this onboarding build.
-      </Text>
-    </Screen>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-function PreferenceRow({
+function StatusRow({
   label,
-  value,
-  mono = false,
+  detail,
+  detailTone = 'default',
 }: {
   label: string;
-  value: string;
-  mono?: boolean;
+  detail: string;
+  detailTone?: 'default' | 'positive' | 'warning';
 }) {
   return (
-    <View className="min-h-[52px] flex-row items-center justify-between border-b border-taupe/30 px-5 py-3">
-      <Text className="font-inter text-sm text-muted-ink">{label}</Text>
+    <View className="min-h-[54px] flex-row items-center px-4 py-3">
+      <Text className="flex-1 text-[16px] font-normal text-ink">{label}</Text>
       <Text
         className={
-          mono
-            ? 'ml-5 flex-1 text-right font-mono-medium text-[13px] text-ink'
-            : 'ml-5 flex-1 text-right font-inter-medium text-sm text-ink'
+          detailTone === 'positive'
+            ? 'ml-4 text-[15px] font-medium text-success'
+            : detailTone === 'warning'
+              ? 'ml-4 text-[15px] font-medium text-urgent'
+              : 'ml-4 max-w-[62%] text-right text-[14px] font-normal text-muted-ink/70'
         }
+        numberOfLines={1}
       >
-        {value}
+        {detail}
       </Text>
     </View>
   );
+}
+
+function formatToday(locale: string) {
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    }).format(new Date());
+  }
 }
