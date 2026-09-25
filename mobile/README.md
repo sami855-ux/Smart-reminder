@@ -47,6 +47,20 @@ npm install --legacy-peer-deps
 npm start
 ```
 
+### Android notification testing
+
+Authentication and the rest of onboarding can run in Expo Go. On Android,
+Smart Reminder treats the notification runtime as unavailable in Expo Go to
+avoid loading Expo's unsupported push-token registration path. Use the app's
+development build to verify the real notification permission flow:
+
+```bash
+npx expo run:android
+```
+
+The production app and development build continue to use the operating-system
+notification permission and settings state.
+
 Use a physical Android and iOS device for final permission and system-settings verification.
 
 ## Verify
