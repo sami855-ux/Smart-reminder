@@ -76,7 +76,7 @@ describe('AuthService refresh rotation', () => {
   }
 
   it('atomically consumes the current refresh token and issues its replacement', async () => {
-    const { service, tx } = setup(null);
+    const { service, tokens, tx } = setup(null);
 
     const response = await service.refresh('old-refresh-token', {});
 
@@ -95,6 +95,7 @@ describe('AuthService refresh rotation', () => {
         expiresAt,
       },
     });
+    expect(tokens.createRefreshToken).toHaveBeenCalledWith(user.id);
     expect(response).toMatchObject({
       accessToken: 'signed-access-token',
       refreshToken: 'new-refresh-token',

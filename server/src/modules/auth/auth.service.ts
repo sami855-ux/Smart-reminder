@@ -292,7 +292,6 @@ export class AuthService {
 
   async refresh(refreshToken: string, metadata: RequestMetadata): Promise<AuthResponseDto> {
     const now = new Date();
-    const nextToken = this.tokens.createRefreshToken();
     const nextExpiresAt = this.tokens.refreshTokenExpiresAt(now);
     const tokenHash = this.tokens.hashRefreshToken(refreshToken);
 
@@ -354,6 +353,7 @@ export class AuthService {
         return { status: 'reuse' };
       }
 
+      const nextToken = this.tokens.createRefreshToken(session.userId);
       const replacement = await tx.refreshToken.create({
         data: {
           sessionId: session.id,
