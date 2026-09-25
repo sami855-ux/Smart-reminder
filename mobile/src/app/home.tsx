@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { Redirect, useRouter } from 'expo-router';
 import { Text, View } from 'react-native';
 
 import { Button } from '../components/ui/Button';
 import { PermissionWarning } from '../components/ui/PermissionWarning';
 import { Screen } from '../components/ui/Screen';
+import { useAuth } from '../auth/AuthProvider';
 import { formatPreferenceExample } from '../onboarding/device-preferences';
 import { useOnboarding } from '../onboarding/onboarding-context';
 import {
@@ -12,11 +14,15 @@ import {
 } from '../platform/notifications/notification-permission';
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const { status, user } = useAuth();
   const { state, reconcilePermission } = useOnboarding();
   const [checking, setChecking] = useState(false);
   const permissionAllowed = notificationPermissionAllowsAlerts(
     state.notificationPermission,
   );
+
+  if (status !== 'authenticated' || !user) return <Redirect href="/" />;
 
   async function checkAgain() {
     setChecking(true);
@@ -79,6 +85,14 @@ export default function HomeScreen() {
           loading={checking}
           onPress={() => void checkAgain()}
           variant="secondary"
+        />
+      </View>
+
+      <View className="mt-3">
+        <Button
+          label="Account and security"
+          onPress={() => router.push('/account')}
+          variant="text"
         />
       </View>
 

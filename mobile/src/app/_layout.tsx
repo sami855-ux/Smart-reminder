@@ -10,7 +10,11 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { OnboardingProvider } from '../onboarding/onboarding-context';
+import { AuthProvider } from '../auth/AuthProvider';
+import {
+  OnboardingProvider,
+  useOnboarding,
+} from '../onboarding/onboarding-context';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -28,9 +32,19 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <OnboardingProvider>
-        <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }} />
+        <AuthBridge />
       </OnboardingProvider>
     </SafeAreaProvider>
+  );
+}
+
+function AuthBridge() {
+  const { resetOnboarding } = useOnboarding();
+
+  return (
+    <AuthProvider onSessionCleared={resetOnboarding}>
+      <StatusBar style="dark" />
+      <Stack screenOptions={{ headerShown: false }} />
+    </AuthProvider>
   );
 }
