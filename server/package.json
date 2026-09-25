@@ -19,6 +19,7 @@
     "db:format": "prisma format",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },
