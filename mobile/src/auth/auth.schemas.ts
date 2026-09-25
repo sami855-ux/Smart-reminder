@@ -11,7 +11,9 @@ export const authUserSchema = z
 export const authResponseSchema = z
   .object({
     accessToken: z.string().min(1),
-    refreshToken: z.string().min(43).max(128).regex(/^[A-Za-z0-9_-]+$/),
+    // Refresh tokens are opaque credentials. Validate only the server's size
+    // contract so the client does not depend on their internal encoding.
+    refreshToken: z.string().min(43).max(128),
     accessTokenExpiresInSeconds: z.number().int().positive(),
     refreshTokenExpiresAt: z.string().datetime(),
     user: authUserSchema,
