@@ -1,8 +1,13 @@
 import * as Linking from 'expo-linking';
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import type { NotificationPermissionState } from '../../onboarding/types';
+import { loadNotificationsModule } from './notification-runtime';
+
+type NotificationsModule = typeof import('expo-notifications');
+type NotificationPermissionsStatus = Awaited<
+  ReturnType<NotificationsModule['getPermissionsAsync']>
+>;
 
 export type PermissionSnapshot = {
   state: NotificationPermissionState;
@@ -10,7 +15,8 @@ export type PermissionSnapshot = {
 };
 
 function normalizePermission(
-  permission: Notifications.NotificationPermissionsStatus,
+  permission: NotificationPermissionsStatus,
+  notifications: NotificationsModule,
 ): NotificationPermissionState {
   if (permission.granted) {
     return 'granted';
@@ -18,12 +24,12 @@ function normalizePermission(
 
   if (
     permission.ios?.status ===
-    Notifications.IosAuthorizationStatus.PROVISIONAL
+    notifications.IosAuthorizationStatus.PROVISIONAL
   ) {
     return 'provisional';
   }
 
-  if (permission.status === Notifications.PermissionStatus.UNDETERMINED) {
+  if (permission.status === notifications.PermissionStatus.UNDETERMINED) {
     return permission.canAskAgain ? 'prompt-available' : 'blocked';
   }
 
@@ -31,14 +37,15 @@ function normalizePermission(
 }
 
 async function readPermission(): Promise<PermissionSnapshot> {
-  if (Platform.OS === 'web') {
+  const notifications = await loadNotificationsModule();
+  if (!notifications) {
     return { state: 'unavailable', checkedAt: new Date().toISOString() };
   }
 
   try {
-    const permission = await Notifications.getPermissionsAsync();
+    const permission = await notifications.getPermissionsAsync();
     return {
-      state: normalizePermission(permission),
+      state: normalizePermission(permission, notifications),
       checkedAt: new Date().toISOString(),
     };
   } catch {
@@ -51,21 +58,20 @@ export async function getNotificationPermission(): Promise<PermissionSnapshot> {
 }
 
 export async function requestNotificationPermission(): Promise<PermissionSnapshot> {
-  if (Platform.OS === 'web') {
-    return readPermission();
-  }
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('reminders', {
-      name: 'Reminders',
-      description: 'Alerts for reminders you create in Smart Reminder.',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 150, 250],
-    });
-  }
+  const notifications = await loadNotificationsModule();
+  if (!notifications) return readPermission();
 
   try {
-    const permission = await Notifications.requestPermissionsAsync({
+    if (Platform.OS === 'android') {
+      await notifications.setNotificationChannelAsync('reminders', {
+        name: 'Reminders',
+        description: 'Alerts for reminders you create in Smart Reminder.',
+        importance: notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 150, 250],
+      });
+    }
+
+    const permission = await notifications.requestPermissionsAsync({
       ios: {
         allowAlert: true,
         allowBadge: true,
@@ -74,7 +80,7 @@ export async function requestNotificationPermission(): Promise<PermissionSnapsho
     });
 
     return {
-      state: normalizePermission(permission),
+      state: normalizePermission(permission, notifications),
       checkedAt: new Date().toISOString(),
     };
   } catch {
