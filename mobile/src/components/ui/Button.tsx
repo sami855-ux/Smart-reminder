@@ -30,7 +30,7 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       className={cn(
-        'min-h-[52px] items-center justify-center rounded-full px-6 active:opacity-65',
+        'min-h-[54px] items-center justify-center rounded-2xl px-6 active:opacity-75',
         variant === 'primary' && 'bg-intelligence',
         variant === 'secondary' && 'bg-secondary-fill',
         variant === 'text' && 'min-h-11 bg-transparent',
@@ -42,7 +42,7 @@ export function Button({
       <View className="flex-row items-center gap-2.5">
         {loading ? (
           <ActivityIndicator
-            color={variant === 'primary' ? '#FFFFFF' : '#007AFF'}
+            color={variant === 'primary' ? '#FFFFFF' : '#20201E'}
           />
         ) : (
           icon
@@ -53,7 +53,7 @@ export function Button({
             variant === 'primary'
               ? 'text-white'
               : variant === 'secondary'
-                ? 'text-intelligence-dark'
+                ? 'text-ink'
                 : 'text-intelligence',
           )}
         >

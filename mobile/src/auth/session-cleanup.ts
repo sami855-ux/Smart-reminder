@@ -1,4 +1,5 @@
 import { ApiError } from '../api/errors';
+import { queryClient } from '../api/query-client';
 import { cancelAllScheduledNotifications } from '../platform/notifications/notification-runtime';
 
 import { useAuthStore } from './auth.store';
@@ -6,6 +7,7 @@ import { clearRefreshToken } from './token-storage';
 
 export async function clearLocalSession(): Promise<void> {
   useAuthStore.getState().clearSession();
+  queryClient.clear();
 
   await Promise.allSettled([cancelAllScheduledNotifications()]);
 

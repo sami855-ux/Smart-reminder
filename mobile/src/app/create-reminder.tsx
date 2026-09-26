@@ -38,10 +38,11 @@ import type {
 } from '../reminders/reminder.schemas';
 
 type CaptureMode = 'natural' | 'manual';
-type PickerMode = 'date' | 'time' | null;
+type PickerMode = 'date' | 'time' | 'end-date' | null;
 type ScheduleType = ReminderScheduleInput['type'];
+type EndMode = 'none' | 'count' | 'date';
 
-const recurrenceOptions: Array<{ type: ScheduleType; label: string }> = [
+const recurrenceOptions: { type: ScheduleType; label: string }[] = [
   { type: 'ONE_TIME', label: 'Once' },
   { type: 'DAILY', label: 'Daily' },
   { type: 'WEEKLY', label: 'Weekly' },
@@ -63,12 +64,14 @@ export default function CreateReminderScreen() {
   const [contextNote, setContextNote] = useState('');
   const [scheduleType, setScheduleType] = useState<ScheduleType>('ONE_TIME');
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([]);
+  const [endMode, setEndMode] = useState<EndMode>('none');
   const [occurrenceCount, setOccurrenceCount] = useState('');
   const [dateTime, setDateTime] = useState(initialDate);
+  const [endDate, setEndDate] = useState(() => addDays(initialDate, 30));
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [preview, setPreview] = useState<ReminderPreview | null>(null);
   const [parserMessages, setParserMessages] = useState<string[]>([]);
-  const inferred = useRef(new Set<string>());
+  const [inferred, setInferred] = useState<Set<string>>(() => new Set());
 
   const previewMutation = useMutation({ mutationFn: previewReminder });
   const parseMutation = useMutation({ mutationFn: parseReminder });
@@ -90,6 +93,15 @@ export default function CreateReminderScreen() {
   function invalidatePreview() {
     if (preview) setPreview(null);
     idempotencyKey.current = createIdempotencyKey('create');
+  }
+
+  function markEdited(field: string) {
+    setInferred((current) => {
+      if (!current.has(field)) return current;
+      const next = new Set(current);
+      next.delete(field);
+      return next;
+    });
   }
 
   function buildInput(): ReminderContentInput | null {
@@ -120,7 +132,11 @@ export default function CreateReminderScreen() {
       return null;
     }
     const count = occurrenceCount.trim() ? Number(occurrenceCount) : null;
-    if (count !== null && (!Number.isInteger(count) || count < 1 || count > 500)) {
+    if (
+      scheduleType !== 'ONE_TIME' &&
+      endMode === 'count' &&
+      (count === null || !Number.isInteger(count) || count < 1 || count > 500)
+    ) {
       showToast({
         title: 'Check the occurrence count',
         message: 'Use a whole number from 1 through 500.',
@@ -140,8 +156,11 @@ export default function CreateReminderScreen() {
         ...(scheduleType === 'SELECTED_WEEKDAYS'
           ? { weekdays: selectedWeekdays }
           : {}),
-        ...(scheduleType !== 'ONE_TIME' && count !== null
+        ...(scheduleType !== 'ONE_TIME' && endMode === 'count' && count !== null
           ? { occurrenceCount: count }
+          : {}),
+        ...(scheduleType !== 'ONE_TIME' && endMode === 'date'
+          ? { endDate: formatLocalDate(endDate) }
           : {}),
       },
     };
@@ -180,7 +199,7 @@ export default function CreateReminderScreen() {
         timeFormat: state.preferences.timeFormat,
       });
       const structured = result.structured;
-      inferred.current = new Set(result.inferredFields);
+      setInferred(new Set(result.inferredFields));
       setParserMessages([
         ...result.ambiguities.map((item) => item.message),
         ...result.warnings.map((item) => item.message),
@@ -259,6 +278,11 @@ export default function CreateReminderScreen() {
   function handlePickerChange(event: DateTimePickerEvent, selected?: Date) {
     if (Platform.OS === 'android') setPickerMode(null);
     if (event.type !== 'set' || !selected) return;
+    if (pickerMode === 'end-date') {
+      setEndDate(selected);
+      invalidatePreview();
+      return;
+    }
     const next = new Date(dateTime);
     if (pickerMode === 'date') {
       next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
@@ -266,6 +290,7 @@ export default function CreateReminderScreen() {
       next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
     }
     setDateTime(next);
+    markEdited(pickerMode === 'date' ? 'date' : 'time');
     invalidatePreview();
   }
 
@@ -343,10 +368,11 @@ export default function CreateReminderScreen() {
                 ) : null}
 
                 <TextField
-                  label={inferred.current.has('title') ? 'Title · inferred' : 'Title'}
+                  label={inferred.has('title') ? 'Title · inferred' : 'Title'}
                   maxLength={120}
                   onChangeText={(value) => {
                     setTitle(value);
+                    markEdited('title');
                     invalidatePreview();
                   }}
                   placeholder="Call John"
@@ -366,13 +392,13 @@ export default function CreateReminderScreen() {
 
                 <FormSection label="WHEN">
                   <DateTimeRow
-                    label="Date"
+                    label={inferred.has('date') ? 'Date · inferred' : 'Date'}
                     value={formatDisplayDate(dateTime, state.preferences.locale)}
                     onPress={() => setPickerMode('date')}
                   />
                   <Divider />
                   <DateTimeRow
-                    label="Time"
+                    label={inferred.has('time') ? 'Time · inferred' : 'Time'}
                     value={formatDisplayTime(
                       dateTime,
                       state.preferences.locale,
@@ -393,10 +419,16 @@ export default function CreateReminderScreen() {
                   <View className="rounded-2xl bg-paper p-3">
                     <DateTimePicker
                       display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      minimumDate={pickerMode === 'date' ? new Date() : undefined}
-                      mode={pickerMode}
+                      minimumDate={
+                        pickerMode === 'end-date'
+                          ? dateTime
+                          : pickerMode === 'date'
+                            ? new Date()
+                            : undefined
+                      }
+                      mode={pickerMode === 'time' ? 'time' : 'date'}
                       onChange={handlePickerChange}
-                      value={dateTime}
+                      value={pickerMode === 'end-date' ? endDate : dateTime}
                     />
                     {Platform.OS === 'ios' ? (
                       <Pressable
@@ -410,7 +442,9 @@ export default function CreateReminderScreen() {
                 ) : null}
 
                 <View>
-                  <Text className="mb-2 text-[13px] font-semibold text-muted-ink">REPEAT</Text>
+                  <Text className="mb-2 text-[13px] font-semibold text-muted-ink">
+                    {inferred.has('recurrence') ? 'REPEAT · INFERRED' : 'REPEAT'}
+                  </Text>
                   <View className="flex-row flex-wrap gap-2">
                     {recurrenceOptions.map((option) => (
                       <ChoiceChip
@@ -419,7 +453,11 @@ export default function CreateReminderScreen() {
                         selected={scheduleType === option.type}
                         onPress={() => {
                           setScheduleType(option.type);
-                          if (option.type === 'ONE_TIME') setOccurrenceCount('');
+                          if (option.type === 'ONE_TIME') {
+                            setOccurrenceCount('');
+                            setEndMode('none');
+                          }
+                          markEdited('recurrence');
                           invalidatePreview();
                         }}
                       />
@@ -449,6 +487,7 @@ export default function CreateReminderScreen() {
                                 ? current.filter((item) => item !== day)
                                 : [...current, day].sort(),
                             );
+                            markEdited('recurrence');
                             invalidatePreview();
                           }}
                         >
@@ -467,17 +506,48 @@ export default function CreateReminderScreen() {
                 ) : null}
 
                 {scheduleType !== 'ONE_TIME' ? (
-                  <TextField
-                    keyboardType="number-pad"
-                    label="End after · optional occurrences"
-                    maxLength={3}
-                    onChangeText={(value) => {
-                      setOccurrenceCount(value.replace(/\D/gu, ''));
-                      invalidatePreview();
-                    }}
-                    placeholder="Leave empty for no end date"
-                    value={occurrenceCount}
-                  />
+                  <View className="gap-3">
+                    <Text className="text-[13px] font-semibold text-muted-ink">SERIES END</Text>
+                    <View className="flex-row flex-wrap gap-2">
+                      {([
+                        ['none', 'No end'],
+                        ['count', 'After count'],
+                        ['date', 'On date'],
+                      ] as const).map(([value, label]) => (
+                        <ChoiceChip
+                          key={value}
+                          label={label}
+                          selected={endMode === value}
+                          onPress={() => {
+                            setEndMode(value);
+                            invalidatePreview();
+                          }}
+                        />
+                      ))}
+                    </View>
+                    {endMode === 'count' ? (
+                      <TextField
+                        keyboardType="number-pad"
+                        label="Number of occurrences"
+                        maxLength={3}
+                        onChangeText={(value) => {
+                          setOccurrenceCount(value.replace(/\D/gu, ''));
+                          invalidatePreview();
+                        }}
+                        placeholder="For example, 12"
+                        value={occurrenceCount}
+                      />
+                    ) : null}
+                    {endMode === 'date' ? (
+                      <FormSection label="END DATE">
+                        <DateTimeRow
+                          label="Final local date"
+                          value={formatDisplayDate(endDate, state.preferences.locale)}
+                          onPress={() => setPickerMode('end-date')}
+                        />
+                      </FormSection>
+                    ) : null}
+                  </View>
                 ) : null}
 
                 <Button
@@ -641,6 +711,12 @@ function tomorrowAtNine() {
   date.setDate(date.getDate() + 1);
   date.setHours(9, 0, 0, 0);
   return date;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 }
 
 function formatLocalDate(date: Date) {

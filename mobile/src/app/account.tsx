@@ -243,6 +243,15 @@ export default function AccountScreen() {
               />
             </SettingsGroup>
 
+            <SectionLabel>PREFERENCES</SectionLabel>
+            <SettingsGroup>
+              <SettingsAction
+                description="Preview the impact before changing how reminder times display"
+                onPress={() => router.push('/timezone-settings')}
+                title="Timezone and schedule impact"
+              />
+            </SettingsGroup>
+
             <SectionLabel>DATA &amp; PRIVACY</SectionLabel>
             <SettingsGroup>
               <SettingsAction

@@ -1,7 +1,7 @@
 # Smart Reminder mobile
 
-Expo SDK 57 / React Native implementation of first-run onboarding and the
-account authentication lifecycle.
+Expo SDK 57 / React Native application for onboarding, authentication, and the
+core reminder creation and time-management flow.
 
 ## Included
 
@@ -16,8 +16,16 @@ account authentication lifecycle.
 - Single-flight refresh-token rotation and automatic authenticated-request retry
 - Email verification and password-recovery deep links
 - Current-device and all-device logout, JSON export, and account deletion
+- Natural-language assistance with preserved drafts, visible ambiguities, and editable inferred fields
+- Manual one-time, daily, weekly, and selected-weekday reminder creation
+- Native date/time selection, optional series end date or occurrence count, and pre-save civil-time preview
+- Upcoming/overdue occurrence lists with timezone-aware formatting and pull-to-refresh
+- One-occurrence or future-series rescheduling with optimistic concurrency
+- 10-minute, 30-minute, and one-hour occurrence snooze actions
+- Read-only account-timezone impact preview before changing display preferences
+- Local notification scheduling and reminder deep links in development/production builds
 
-The test-notification feature and reminder creation are intentionally outside this package's current scope.
+The server remains authoritative. Mobile responses are schema-validated before entering UI state, and all mutation failures are presented through the app toast layer.
 
 ## API configuration
 
@@ -49,10 +57,12 @@ npm start
 
 ### Android notification testing
 
-Authentication and the rest of onboarding can run in Expo Go. On Android,
+Authentication, onboarding, and server-backed reminder screens can run in Expo Go. On Android,
 Smart Reminder treats the notification runtime as unavailable in Expo Go to
-avoid loading Expo's unsupported push-token registration path. Use the app's
-development build to verify the real notification permission flow:
+avoid loading Expo's unsupported push-token registration path. Reminder creation
+still succeeds there, but device notification scheduling reports that a development
+build is required. Use the app's development build to verify real scheduling,
+permission behavior, foreground presentation, and notification deep links:
 
 ```bash
 npx expo run:android

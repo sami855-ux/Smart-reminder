@@ -60,6 +60,14 @@ The deterministic grammar supports ISO and English month-name dates, today/tomor
 
 Every timestamp accepted or returned by these routes is an RFC 3339 instant with a `Z` suffix or explicit UTC offset. Schedule inputs remain civil values: `localDate` uses `YYYY-MM-DD`, `localTime` uses 24-hour `HH:mm`, and `timezone` is an IANA identifier.
 
+### `GET /v1/reminder-occurrences`
+
+Returns an ownership-scoped, stable page of scheduled occurrences ordered by effective instant and occurrence ID. Optional RFC 3339 `from`/`to` filters bound the mobile scheduling window; `limit` is 1–50 and `cursor` is opaque. Each item includes reminder content, schedule identity/revision, recurrence type, timezone, sequence, lifecycle, and original/effective instants.
+
+### `GET /v1/reminders/:reminderId`
+
+Returns one owned reminder, its latest schedule revision, and the current revision's materialized occurrences. The mobile app uses this response to refresh authoritative state before rebuilding local notifications or submitting occurrence actions.
+
 ### `POST /v1/reminders/timezone-preview`
 
 Accepts `{ "proposedTimezone": "America/New_York" }` and returns a read-only view of each active schedule's next instant in the proposed account timezone. Its policy is `PRESERVE_SCHEDULE_TIMEZONE`; it reports `persisted: false`, `scheduleTimezoneChanges: false`, and `confirmedInstantChanges: false`. It never rewrites a schedule.

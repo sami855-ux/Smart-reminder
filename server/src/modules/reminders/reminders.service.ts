@@ -117,15 +117,16 @@ export class RemindersService {
       where: { id: reminderId, userId },
       include: {
         schedules: { orderBy: { revision: 'desc' }, take: 1 },
-        occurrences: {
-          orderBy: [{ effectiveScheduledAt: 'asc' }, { id: 'asc' }],
-          take: 128,
-        },
       },
     });
     if (!reminder) throw new NotFoundException('Reminder not found.');
     const schedule = reminder.schedules[0];
     if (!schedule) throw new ConflictException('The reminder schedule is incomplete.');
+    const occurrences = await this.prisma.reminderOccurrence.findMany({
+      where: { reminderId: reminder.id, scheduleId: schedule.id },
+      orderBy: [{ effectiveScheduledAt: 'asc' }, { id: 'asc' }],
+      take: 128,
+    });
 
     return {
       id: reminder.id,
@@ -147,7 +148,7 @@ export class RemindersService {
         revision: schedule.revision,
         materializedThrough: schedule.materializedThrough.toISOString(),
       },
-      occurrences: reminder.occurrences.map((occurrence) => ({
+      occurrences: occurrences.map((occurrence) => ({
         id: occurrence.id,
         scheduleId: occurrence.scheduleId,
         scheduleRevision: occurrence.scheduleRevision,

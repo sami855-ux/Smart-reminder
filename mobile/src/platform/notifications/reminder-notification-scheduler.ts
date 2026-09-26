@@ -35,14 +35,15 @@ export async function scheduleReminderNotifications(
 
     let scheduled = 0;
     for (const occurrence of reminder.occurrences) {
+      const identifier = `occurrence:${occurrence.id}:r${occurrence.scheduleRevision}`;
       if (
         occurrence.lifecycle !== 'SCHEDULED' ||
         new Date(occurrence.effectiveScheduledAt).getTime() <= Date.now()
       ) {
+        await notifications.cancelScheduledNotificationAsync(identifier).catch(() => undefined);
         continue;
       }
 
-      const identifier = `occurrence:${occurrence.id}:r${occurrence.scheduleRevision}`;
       await notifications.cancelScheduledNotificationAsync(identifier).catch(() => undefined);
       await notifications.scheduleNotificationAsync({
         identifier,

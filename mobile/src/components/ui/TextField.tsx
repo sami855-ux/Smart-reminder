@@ -36,11 +36,11 @@ export function TextField({
       </Text>
       <View
         className={cn(
-          'min-h-[54px] flex-row items-center rounded-xl border bg-paper px-4',
+          'min-h-[56px] flex-row items-center rounded-2xl border bg-paper px-4',
           error
             ? 'border-urgent'
             : focused
-              ? 'border-intelligence'
+              ? 'border-ink'
               : 'border-taupe',
         )}
       >
@@ -59,9 +59,9 @@ export function TextField({
             setFocused(true);
             onFocus?.(event);
           }}
-          placeholderTextColor="#8E8E93"
+          placeholderTextColor="#85857E"
           secureTextEntry={secureTextEntry && !revealed}
-          selectionColor="#007AFF"
+          selectionColor="#343431"
         />
         {secureTextEntry ? (
           <Pressable

@@ -9,8 +9,11 @@ import { AuthProvider } from '../auth/AuthProvider';
 import { ToastProvider } from '../components/ui/ToastProvider';
 import { OnboardingProvider } from '../onboarding/onboarding-context';
 import { queryClient } from '../api/query-client';
+import { useNotificationNavigation } from '../platform/notifications/notification-navigation';
 
 export default function RootLayout() {
+  useNotificationNavigation();
+
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
