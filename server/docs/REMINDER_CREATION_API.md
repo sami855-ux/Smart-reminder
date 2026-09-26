@@ -135,7 +135,7 @@ Civil-time resolution uses the schedule's IANA timezone. A nonexistent local tim
 | MVP-TIME-005 | Read-only timezone-impact endpoint preserves schedule timezone and confirmed instants |
 | MVP-TIME-006 | Deterministic gap-forward/earlier-offset resolution, explicit preview adjustment, instant, and offset |
 | MVP-TIME-007 | Non-exact dayparts return a blocking parser ambiguity and cannot produce a preview |
-| MVP-TIME-008–009 | Required start date; optional exclusive end/count bound; daily, weekly, and selected-weekday rules |
+| MVP-TIME-008–009 | Required start date; optional mutually exclusive end/count bound; daily, weekly, and selected-weekday rules |
 | MVP-TIME-010 | Independently persisted occurrence rows with sequence, times, schedule revision, and lifecycle |
 | MVP-TIME-011 | Explicit edit scope; future edits create linked revisions, cancel superseded future rows, and retain history |
 | MVP-TIME-012 | Snooze atomically updates only the selected occurrence and preserves its original instant |
