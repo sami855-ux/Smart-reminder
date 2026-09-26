@@ -45,22 +45,166 @@ enum AuthActionTokenType {
   PASSWORD_RESET
 }
 
+enum ReminderLifecycle {
+  ACTIVE
+  CANCELLED
+  ARCHIVED
+}
+
+enum ScheduleType {
+  ONE_TIME
+  DAILY
+  WEEKLY
+  SELECTED_WEEKDAYS
+}
+
+enum OccurrenceLifecycle {
+  SCHEDULED
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+enum ReminderEventType {
+  REMINDER_CREATED
+  SCHEDULE_REVISED
+  OCCURRENCE_RESCHEDULED
+  OCCURRENCE_SNOOZED
+}
+
+enum ReminderActorType {
+  USER
+  SYSTEM
+}
+
 model User {
-  id                  String              @id @default(uuid()) @db.Uuid
-  email               String              @unique @db.VarChar(320)
-  passwordHash        String              @map("password_hash") @db.VarChar(255)
-  status              UserStatus          @default(ACTIVE)
-  emailVerifiedAt     DateTime?           @map("email_verified_at") @db.Timestamptz(3)
-  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt           DateTime?           @map("deleted_at") @db.Timestamptz(3)
-  deletionRequestedAt DateTime?           @map("deletion_requested_at") @db.Timestamptz(3)
-  purgeAfter          DateTime?           @map("purge_after") @db.Timestamptz(3)
-  sessions            AuthSession[]
-  authEvents          AuthSecurityEvent[]
-  actionTokens        AuthActionToken[]
+  id                     String                  @id @default(uuid()) @db.Uuid
+  email                  String                  @unique @db.VarChar(320)
+  passwordHash           String                  @map("password_hash") @db.VarChar(255)
+  status                 UserStatus              @default(ACTIVE)
+  emailVerifiedAt        DateTime?               @map("email_verified_at") @db.Timestamptz(3)
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt              DateTime?               @map("deleted_at") @db.Timestamptz(3)
+  deletionRequestedAt    DateTime?               @map("deletion_requested_at") @db.Timestamptz(3)
+  purgeAfter             DateTime?               @map("purge_after") @db.Timestamptz(3)
+  sessions               AuthSession[]
+  authEvents             AuthSecurityEvent[]
+  actionTokens           AuthActionToken[]
+  reminders              Reminder[]
+  reminderEvents         ReminderEvent[]
+  reminderCreateRequests ReminderCreateRequest[]
 
   @@map("users")
+}
+
+model Reminder {
+  id             String                  @id @default(uuid()) @db.Uuid
+  userId         String                  @map("user_id") @db.Uuid
+  title          String                  @db.VarChar(120)
+  contextNote    String?                 @map("context_note") @db.VarChar(2000)
+  lifecycle      ReminderLifecycle       @default(ACTIVE)
+  revision       Int                     @default(1)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt      DateTime?               @map("deleted_at") @db.Timestamptz(3)
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules      Schedule[]
+  occurrences    ReminderOccurrence[]
+  events         ReminderEvent[]
+  createRequests ReminderCreateRequest[]
+
+  @@index([userId, lifecycle, createdAt])
+  @@map("reminders")
+}
+
+model Schedule {
+  id                   String               @id @default(uuid()) @db.Uuid
+  reminderId           String               @map("reminder_id") @db.Uuid
+  type                 ScheduleType
+  localStartDate       String               @map("local_start_date") @db.Char(10)
+  localStartTime       String               @map("local_start_time") @db.Char(5)
+  timezone             String               @db.VarChar(100)
+  recurrenceWeekdays   Int[]                @default([]) @map("recurrence_weekdays")
+  endLocalDate         String?              @map("end_local_date") @db.Char(10)
+  occurrenceCount      Int?                 @map("occurrence_count")
+  resolvedStartAt      DateTime             @map("resolved_start_at") @db.Timestamptz(3)
+  resolvedUtcOffsetMin Int                  @map("resolved_utc_offset_min")
+  revision             Int                  @default(1)
+  materializedThrough  DateTime             @map("materialized_through") @db.Timestamptz(3)
+  nextEvaluationAt     DateTime?            @map("next_evaluation_at") @db.Timestamptz(3)
+  supersededScheduleId String?              @map("superseded_schedule_id") @db.Uuid
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  reminder             Reminder             @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  supersededSchedule   Schedule?            @relation("ScheduleRevision", fields: [supersededScheduleId], references: [id], onDelete: SetNull)
+  replacementSchedules Schedule[]           @relation("ScheduleRevision")
+  occurrences          ReminderOccurrence[]
+
+  @@unique([reminderId, revision])
+  @@index([reminderId, nextEvaluationAt])
+  @@map("schedules")
+}
+
+model ReminderOccurrence {
+  id                   String              @id @default(uuid()) @db.Uuid
+  reminderId           String              @map("reminder_id") @db.Uuid
+  scheduleId           String              @map("schedule_id") @db.Uuid
+  scheduleRevision     Int                 @map("schedule_revision")
+  sequence             Int
+  occurrenceKey        String              @map("occurrence_key") @db.VarChar(160)
+  originalScheduledAt  DateTime            @map("original_scheduled_at") @db.Timestamptz(3)
+  effectiveScheduledAt DateTime            @map("effective_scheduled_at") @db.Timestamptz(3)
+  localDate            String              @map("local_date") @db.Char(10)
+  localTime            String              @map("local_time") @db.Char(5)
+  lifecycle            OccurrenceLifecycle @default(SCHEDULED)
+  completedAt          DateTime?           @map("completed_at") @db.Timestamptz(3)
+  skippedAt            DateTime?           @map("skipped_at") @db.Timestamptz(3)
+  cancelledAt          DateTime?           @map("cancelled_at") @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  reminder             Reminder            @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  schedule             Schedule            @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  events               ReminderEvent[]
+
+  @@unique([scheduleId, occurrenceKey])
+  @@unique([scheduleId, sequence])
+  @@index([reminderId, lifecycle, effectiveScheduledAt])
+  @@map("reminder_occurrences")
+}
+
+model ReminderEvent {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String              @map("user_id") @db.Uuid
+  reminderId     String              @map("reminder_id") @db.Uuid
+  occurrenceId   String?             @map("occurrence_id") @db.Uuid
+  actorType      ReminderActorType   @map("actor_type")
+  actorId        String?             @map("actor_id") @db.Uuid
+  type           ReminderEventType
+  metadata       Json?
+  idempotencyKey String              @map("idempotency_key") @db.VarChar(128)
+  requestHash    String?             @map("request_hash") @db.Char(64)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminder       Reminder            @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  occurrence     ReminderOccurrence? @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, idempotencyKey])
+  @@index([reminderId, createdAt])
+  @@map("reminder_events")
+}
+
+model ReminderCreateRequest {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  reminderId     String   @map("reminder_id") @db.Uuid
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(128)
+  requestHash    String   @map("request_hash") @db.Char(64)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminder       Reminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([reminderId])
+  @@map("reminder_create_requests")
 }
 
 model AuthActionToken {

@@ -206,6 +206,15 @@ export class AuthService {
       select: { id: true, email: true, emailVerifiedAt: true, createdAt: true },
     });
     if (!user) throw new UnauthorizedException('Authentication is required.');
+    const reminders = await this.prisma.reminder.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        schedules: { orderBy: { revision: 'asc' } },
+        occurrences: { orderBy: { originalScheduledAt: 'asc' } },
+        events: { orderBy: { createdAt: 'asc' } },
+      },
+    });
     await this.prisma.authSecurityEvent.create({
       data: { userId: user.id, sessionId: principal.sessionId, type: 'DATA_EXPORTED' },
     });
@@ -219,8 +228,49 @@ export class AuthService {
         emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
         createdAt: user.createdAt.toISOString(),
       },
-      reminders: [],
-      note: 'Reminder records will be included when the reminder persistence module is introduced.',
+      reminders: reminders.map((reminder) => ({
+        id: reminder.id,
+        title: reminder.title,
+        contextNote: reminder.contextNote,
+        lifecycle: reminder.lifecycle,
+        revision: reminder.revision,
+        createdAt: reminder.createdAt.toISOString(),
+        updatedAt: reminder.updatedAt.toISOString(),
+        deletedAt: reminder.deletedAt?.toISOString() ?? null,
+        schedules: reminder.schedules.map((schedule) => ({
+          id: schedule.id,
+          type: schedule.type,
+          localStartDate: schedule.localStartDate.trim(),
+          localStartTime: schedule.localStartTime.trim(),
+          timezone: schedule.timezone,
+          recurrenceWeekdays: schedule.recurrenceWeekdays,
+          endLocalDate: schedule.endLocalDate?.trim() ?? null,
+          occurrenceCount: schedule.occurrenceCount,
+          resolvedStartAt: schedule.resolvedStartAt.toISOString(),
+          utcOffsetMinutes: schedule.resolvedUtcOffsetMin,
+          revision: schedule.revision,
+          materializedThrough: schedule.materializedThrough.toISOString(),
+        })),
+        occurrences: reminder.occurrences.map((occurrence) => ({
+          id: occurrence.id,
+          scheduleId: occurrence.scheduleId,
+          scheduleRevision: occurrence.scheduleRevision,
+          sequence: occurrence.sequence,
+          lifecycle: occurrence.lifecycle,
+          localDate: occurrence.localDate.trim(),
+          localTime: occurrence.localTime.trim(),
+          originalScheduledAt: occurrence.originalScheduledAt.toISOString(),
+          effectiveScheduledAt: occurrence.effectiveScheduledAt.toISOString(),
+        })),
+        events: reminder.events.map((event) => ({
+          id: event.id,
+          occurrenceId: event.occurrenceId,
+          actorType: event.actorType,
+          type: event.type,
+          metadata: event.metadata,
+          createdAt: event.createdAt.toISOString(),
+        })),
+      })),
     };
   }
 
@@ -248,6 +298,18 @@ export class AuthService {
         where: { sessionId: { in: sessionIds }, revokedAt: null }, data: { revokedAt: now },
       });
       await tx.authActionToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: now } });
+      await tx.schedule.updateMany({
+        where: { reminder: { userId: user.id } },
+        data: { nextEvaluationAt: null },
+      });
+      await tx.reminderOccurrence.updateMany({
+        where: { reminder: { userId: user.id }, lifecycle: 'SCHEDULED' },
+        data: { lifecycle: 'CANCELLED', cancelledAt: now },
+      });
+      await tx.reminder.updateMany({
+        where: { userId: user.id, lifecycle: 'ACTIVE' },
+        data: { lifecycle: 'CANCELLED', deletedAt: now },
+      });
       await tx.authSecurityEvent.create({
         data: { userId: user.id, sessionId: principal.sessionId, type: 'ACCOUNT_DELETION_REQUESTED', ...metadata },
       });

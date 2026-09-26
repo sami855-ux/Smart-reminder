@@ -7,6 +7,7 @@ import { validateEnvironment } from './config/env.schema.js';
 import { PrismaModule } from './database/prisma.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { RemindersModule } from './modules/reminders/reminders.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { HealthModule } from './modules/health/health.module.js';
     PrismaModule,
     HealthModule,
     AuthModule,
+    RemindersModule,
   ],
   providers: [
     {
