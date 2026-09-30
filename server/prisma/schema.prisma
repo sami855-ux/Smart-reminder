@@ -67,14 +67,51 @@ enum OccurrenceLifecycle {
 
 enum ReminderEventType {
   REMINDER_CREATED
+  REMINDER_UPDATED
+  REMINDER_CANCELLED
+  REMINDER_DELETED
   SCHEDULE_REVISED
   OCCURRENCE_RESCHEDULED
   OCCURRENCE_SNOOZED
+  OCCURRENCE_COMPLETED
+  OCCURRENCE_SKIPPED
+  NUDGE_POLICY_UPDATED
+  NOTIFICATION_REQUESTED
+  NOTIFICATION_SCHEDULED
+  NOTIFICATION_SCHEDULING_FAILED
+  NOTIFICATION_CANCELLED
+  NOTIFICATION_OPENED
+  NOTIFICATION_ACTED_ON
 }
 
 enum ReminderActorType {
   USER
   SYSTEM
+  DEVICE
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+enum NotificationPermissionState {
+  UNKNOWN
+  GRANTED
+  DENIED
+  PROVISIONAL
+  EPHEMERAL
+}
+
+enum LockScreenPrivacy {
+  FULL
+  TITLE_ONLY
+  PRIVATE
+}
+
+enum TimeFormat {
+  H12
+  H24
 }
 
 model User {
@@ -82,6 +119,10 @@ model User {
   email                  String                  @unique @db.VarChar(320)
   passwordHash           String                  @map("password_hash") @db.VarChar(255)
   status                 UserStatus              @default(ACTIVE)
+  locale                 String                  @default("en") @db.VarChar(35)
+  timezone               String                  @default("UTC") @db.VarChar(100)
+  timeFormat             TimeFormat              @default(H24) @map("time_format")
+  profileRevision        Int                     @default(1) @map("profile_revision")
   emailVerifiedAt        DateTime?               @map("email_verified_at") @db.Timestamptz(3)
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -94,27 +135,34 @@ model User {
   reminders              Reminder[]
   reminderEvents         ReminderEvent[]
   reminderCreateRequests ReminderCreateRequest[]
+  deviceInstallations    DeviceInstallation[]
+  notificationPreference NotificationPreference?
+  notificationAttempts   NotificationAttempt[]
 
   @@map("users")
 }
 
 model Reminder {
-  id             String                  @id @default(uuid()) @db.Uuid
-  userId         String                  @map("user_id") @db.Uuid
-  title          String                  @db.VarChar(120)
-  contextNote    String?                 @map("context_note") @db.VarChar(2000)
-  lifecycle      ReminderLifecycle       @default(ACTIVE)
-  revision       Int                     @default(1)
-  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt      DateTime?               @map("deleted_at") @db.Timestamptz(3)
-  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  schedules      Schedule[]
-  occurrences    ReminderOccurrence[]
-  events         ReminderEvent[]
-  createRequests ReminderCreateRequest[]
+  id                   String                  @id @default(uuid()) @db.Uuid
+  userId               String                  @map("user_id") @db.Uuid
+  title                String                  @db.VarChar(120)
+  contextNote          String?                 @map("context_note") @db.VarChar(2000)
+  lifecycle            ReminderLifecycle       @default(ACTIVE)
+  revision             Int                     @default(1)
+  createdAt            DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt            DateTime?               @map("deleted_at") @db.Timestamptz(3)
+  purgeAfter           DateTime?               @map("purge_after") @db.Timestamptz(3)
+  user                 User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules            Schedule[]
+  occurrences          ReminderOccurrence[]
+  events               ReminderEvent[]
+  createRequests       ReminderCreateRequest[]
+  nudgePolicies        NudgePolicy[]
+  notificationAttempts NotificationAttempt[]
 
   @@index([userId, lifecycle, createdAt])
+  @@index([lifecycle, purgeAfter])
   @@map("reminders")
 }
 
@@ -139,6 +187,7 @@ model Schedule {
   supersededSchedule   Schedule?            @relation("ScheduleRevision", fields: [supersededScheduleId], references: [id], onDelete: SetNull)
   replacementSchedules Schedule[]           @relation("ScheduleRevision")
   occurrences          ReminderOccurrence[]
+  nudgePolicy          NudgePolicy?
 
   @@unique([reminderId, revision])
   @@index([reminderId, nextEvaluationAt])
@@ -146,24 +195,25 @@ model Schedule {
 }
 
 model ReminderOccurrence {
-  id                   String              @id @default(uuid()) @db.Uuid
-  reminderId           String              @map("reminder_id") @db.Uuid
-  scheduleId           String              @map("schedule_id") @db.Uuid
-  scheduleRevision     Int                 @map("schedule_revision")
+  id                   String                @id @default(uuid()) @db.Uuid
+  reminderId           String                @map("reminder_id") @db.Uuid
+  scheduleId           String                @map("schedule_id") @db.Uuid
+  scheduleRevision     Int                   @map("schedule_revision")
   sequence             Int
-  occurrenceKey        String              @map("occurrence_key") @db.VarChar(160)
-  originalScheduledAt  DateTime            @map("original_scheduled_at") @db.Timestamptz(3)
-  effectiveScheduledAt DateTime            @map("effective_scheduled_at") @db.Timestamptz(3)
-  localDate            String              @map("local_date") @db.Char(10)
-  localTime            String              @map("local_time") @db.Char(5)
-  lifecycle            OccurrenceLifecycle @default(SCHEDULED)
-  completedAt          DateTime?           @map("completed_at") @db.Timestamptz(3)
-  skippedAt            DateTime?           @map("skipped_at") @db.Timestamptz(3)
-  cancelledAt          DateTime?           @map("cancelled_at") @db.Timestamptz(3)
-  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  reminder             Reminder            @relation(fields: [reminderId], references: [id], onDelete: Cascade)
-  schedule             Schedule            @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  occurrenceKey        String                @map("occurrence_key") @db.VarChar(160)
+  originalScheduledAt  DateTime              @map("original_scheduled_at") @db.Timestamptz(3)
+  effectiveScheduledAt DateTime              @map("effective_scheduled_at") @db.Timestamptz(3)
+  localDate            String                @map("local_date") @db.Char(10)
+  localTime            String                @map("local_time") @db.Char(5)
+  lifecycle            OccurrenceLifecycle   @default(SCHEDULED)
+  completedAt          DateTime?             @map("completed_at") @db.Timestamptz(3)
+  skippedAt            DateTime?             @map("skipped_at") @db.Timestamptz(3)
+  cancelledAt          DateTime?             @map("cancelled_at") @db.Timestamptz(3)
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  reminder             Reminder              @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  schedule             Schedule              @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   events               ReminderEvent[]
+  notificationAttempts NotificationAttempt[]
 
   @@unique([scheduleId, occurrenceKey])
   @@unique([scheduleId, sequence])
@@ -205,6 +255,90 @@ model ReminderCreateRequest {
   @@unique([userId, idempotencyKey])
   @@index([reminderId])
   @@map("reminder_create_requests")
+}
+
+model NudgePolicy {
+  id                 String    @id @default(uuid()) @db.Uuid
+  reminderId         String    @map("reminder_id") @db.Uuid
+  scheduleId         String    @unique @map("schedule_id") @db.Uuid
+  scheduleRevision   Int       @map("schedule_revision")
+  enabled            Boolean   @default(false)
+  intervalMinutes    Int?      @map("interval_minutes")
+  invalidatedAt      DateTime? @map("invalidated_at") @db.Timestamptz(3)
+  invalidationReason String?   @map("invalidation_reason") @db.VarChar(64)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  reminder           Reminder  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  schedule           Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([reminderId, scheduleRevision])
+  @@map("nudge_policies")
+}
+
+model DeviceInstallation {
+  id                   String                      @id @db.Uuid
+  userId               String                      @map("user_id") @db.Uuid
+  platform             DevicePlatform
+  appVersion           String                      @map("app_version") @db.VarChar(40)
+  permissionState      NotificationPermissionState @default(UNKNOWN) @map("permission_state")
+  locale               String                      @db.VarChar(35)
+  timezone             String                      @db.VarChar(100)
+  revision             Int                         @default(1)
+  lastSeenAt           DateTime                    @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  revokedAt            DateTime?                   @map("revoked_at") @db.Timestamptz(3)
+  createdAt            DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user                 User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notificationAttempts NotificationAttempt[]
+
+  @@index([userId, revokedAt, lastSeenAt])
+  @@map("device_installations")
+}
+
+model NotificationPreference {
+  userId            String            @id @map("user_id") @db.Uuid
+  quietHoursStart   String?           @map("quiet_hours_start") @db.Char(5)
+  quietHoursEnd     String?           @map("quiet_hours_end") @db.Char(5)
+  timezone          String            @default("UTC") @db.VarChar(100)
+  lockScreenPrivacy LockScreenPrivacy @default(TITLE_ONLY) @map("lock_screen_privacy")
+  globallyPaused    Boolean           @default(false) @map("globally_paused")
+  revision          Int               @default(1)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model NotificationAttempt {
+  id                   String             @id @default(uuid()) @db.Uuid
+  userId               String             @map("user_id") @db.Uuid
+  occurrenceId         String             @map("occurrence_id") @db.Uuid
+  deviceInstallationId String             @map("device_installation_id") @db.Uuid
+  scheduleRevision     Int                @map("schedule_revision")
+  effectiveScheduledAt DateTime           @map("effective_scheduled_at") @db.Timestamptz(3)
+  nudgeStep            Int                @default(0) @map("nudge_step")
+  logicalKey           String             @unique @map("logical_key") @db.VarChar(255)
+  requestedAt          DateTime           @default(now()) @map("requested_at") @db.Timestamptz(3)
+  locallyScheduledAt   DateTime?          @map("locally_scheduled_at") @db.Timestamptz(3)
+  schedulingFailedAt   DateTime?          @map("scheduling_failed_at") @db.Timestamptz(3)
+  cancelledAt          DateTime?          @map("cancelled_at") @db.Timestamptz(3)
+  openedAt             DateTime?          @map("opened_at") @db.Timestamptz(3)
+  actedOnAt            DateTime?          @map("acted_on_at") @db.Timestamptz(3)
+  osNotificationId     String?            @map("os_notification_id") @db.VarChar(255)
+  errorCode            String?            @map("error_code") @db.VarChar(80)
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  occurrence           ReminderOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  reminder             Reminder           @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  reminderId           String             @map("reminder_id") @db.Uuid
+  deviceInstallation   DeviceInstallation @relation(fields: [deviceInstallationId], references: [id], onDelete: Cascade)
+
+  @@unique([occurrenceId, deviceInstallationId, scheduleRevision, effectiveScheduledAt, nudgeStep], map: "notif_attempt_occ_device_rev_instant_step_key")
+  @@index([userId, updatedAt])
+  @@index([deviceInstallationId, cancelledAt])
+  @@map("notification_attempts")
 }
 
 model AuthActionToken {
