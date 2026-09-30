@@ -8,6 +8,7 @@ import { PrismaModule } from './database/prisma.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { RemindersModule } from './modules/reminders/reminders.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { RemindersModule } from './modules/reminders/reminders.module.js';
     HealthModule,
     AuthModule,
     RemindersModule,
+    NotificationsModule,
   ],
   providers: [
     {

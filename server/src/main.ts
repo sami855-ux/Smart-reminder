@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';
@@ -11,6 +11,7 @@ import { ApiExceptionFilter } from './common/errors/api-exception.filter.js';
 import { requestIdMiddleware } from './common/http/request-id.middleware.js';
 import type { Environment } from './config/env.schema.js';
 import { parseCorsOrigins } from './config/env.schema.js';
+import { createOpenApiDocument } from './openapi.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -52,13 +53,7 @@ async function bootstrap(): Promise<void> {
     config.get('NODE_ENV', { infer: true }) !== 'production' &&
     config.get('SWAGGER_ENABLED', { infer: true })
   ) {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('Smart Reminder API')
-      .setDescription('Versioned API for the Smart Reminder mobile application')
-      .setVersion('1.0')
-      .addBearerAuth()
-      .build();
-    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    const document = createOpenApiDocument(app);
     SwaggerModule.setup('docs', app, document, {
       swaggerOptions: { persistAuthorization: false },
     });
