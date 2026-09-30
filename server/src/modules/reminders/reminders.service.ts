@@ -13,12 +13,16 @@ import type {
   PreviewReminderDto,
 } from './dto/reminder-create.dto.js';
 import type { ListReminderOccurrencesDto } from './dto/reminder-query.dto.js';
+import { OccurrenceListViewDto } from './dto/reminder-action.dto.js';
 import { ReminderScheduleService } from './reminder-schedule.service.js';
 
 const reminderInclude = {
-  schedules: { orderBy: { revision: 'desc' as const }, take: 1 },
-  occurrences: { orderBy: { effectiveScheduledAt: 'asc' as const }, take: 1 },
-} as const;
+  schedules: { orderBy: { revision: 'asc' as const }, take: 1 },
+  occurrences: {
+    orderBy: [{ scheduleRevision: 'asc' as const }, { sequence: 'asc' as const }],
+    take: 1,
+  },
+} satisfies Prisma.ReminderInclude;
 
 type ReminderRecord = Prisma.ReminderGetPayload<{ include: typeof reminderInclude }>;
 
@@ -41,20 +45,44 @@ export class RemindersService {
   }
 
   async listOccurrences(userId: string, query: ListReminderOccurrencesDto) {
+    const view = query.view ?? OccurrenceListViewDto.UPCOMING;
     const cursor = query.cursor ? this.decodeCursor(query.cursor) : null;
-    const from = query.from ? new Date(query.from) : new Date();
+    const now = new Date();
+    const from = query.from
+      ? new Date(query.from)
+      : view === OccurrenceListViewDto.UPCOMING
+        ? now
+        : new Date(now.getTime() - 90 * 24 * 60 * 60_000);
     const to = query.to ? new Date(query.to) : null;
     if (to && to <= from) {
       throw new BadRequestException('to must be later than from.');
     }
 
+    const lifecycles =
+      view === OccurrenceListViewDto.COMPLETED
+        ? (['COMPLETED', 'SKIPPED'] as const)
+        : view === OccurrenceListViewDto.ALL
+          ? (['SCHEDULED', 'COMPLETED', 'SKIPPED'] as const)
+          : (['SCHEDULED'] as const);
+    const upperBound =
+      view === OccurrenceListViewDto.OVERDUE
+        ? to && to < now
+          ? to
+          : now
+        : to;
+
     const rows = await this.prisma.reminderOccurrence.findMany({
       where: {
-        lifecycle: 'SCHEDULED',
-        reminder: { userId, lifecycle: 'ACTIVE' },
+        lifecycle: { in: [...lifecycles] },
+        reminder: {
+          userId,
+          ...(view === OccurrenceListViewDto.COMPLETED || view === OccurrenceListViewDto.ALL
+            ? {}
+            : { lifecycle: 'ACTIVE' }),
+        },
         effectiveScheduledAt: {
           gte: from,
-          ...(to ? { lte: to } : {}),
+          ...(upperBound ? { lt: upperBound } : {}),
         },
         ...(cursor
           ? {
@@ -196,6 +224,13 @@ export class RemindersService {
 
     try {
       const reminderId = await this.prisma.$transaction(async (tx) => {
+        const activeUser = await tx.user.findFirst({
+          where: { id: principal.userId, status: 'ACTIVE', deletedAt: null },
+          select: { id: true },
+        });
+        if (!activeUser) {
+          throw new ConflictException('The account is no longer active.');
+        }
         const reminder = await tx.reminder.create({
           data: {
             userId: principal.userId,
@@ -279,7 +314,7 @@ export class RemindersService {
           },
         });
         return reminder.id;
-      });
+      }, { isolationLevel: 'Serializable' });
 
       const reminder = await this.loadOwnedReminder(principal.userId, reminderId);
       return this.toResponse(reminder, key, false);

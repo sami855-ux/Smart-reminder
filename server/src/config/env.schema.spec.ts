@@ -40,6 +40,18 @@ describe('validateEnvironment', () => {
     expect(() => validateEnvironment({ ...valid, NODE_ENV: 'production' })).toThrow('SMTP_URL');
   });
 
+  it('requires a verified HTTPS app-link origin in production', () => {
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        SMTP_URL: 'smtp://localhost:1025',
+        SMTP_FROM: 'noreply@example.com',
+        AUTH_PUBLIC_APP_URL: 'smart-reminder://auth',
+      }),
+    ).toThrow('AUTH_PUBLIC_APP_URL');
+  });
+
   it('accepts blank optional SMTP values in a copied development env file', () => {
     expect(validateEnvironment({ ...valid, SMTP_URL: '', SMTP_FROM: '' }).SMTP_URL).toBeUndefined();
   });

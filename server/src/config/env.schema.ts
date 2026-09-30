@@ -70,6 +70,13 @@ export const environmentSchema = z.object({
       message: 'SMTP_URL and SMTP_FROM are required in production',
     });
   }
+  if (value.NODE_ENV === 'production' && !value.AUTH_PUBLIC_APP_URL.startsWith('https://')) {
+    context.addIssue({
+      code: 'custom',
+      path: ['AUTH_PUBLIC_APP_URL'],
+      message: 'AUTH_PUBLIC_APP_URL must use HTTPS in production',
+    });
+  }
 });
 
 export type Environment = z.infer<typeof environmentSchema>;

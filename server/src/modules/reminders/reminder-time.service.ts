@@ -133,6 +133,17 @@ export class ReminderTimeService {
       newest.sequence,
     );
     const created = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.schedule.findFirst({
+        where: {
+          reminderId,
+          reminder: { userId, lifecycle: 'ACTIVE', user: { status: 'ACTIVE', deletedAt: null } },
+        },
+        orderBy: { revision: 'desc' },
+        select: { id: true, revision: true },
+      });
+      if (!current || current.id !== schedule.id || current.revision !== schedule.revision) {
+        throw new ConflictException('The schedule changed. Refresh it before extending the horizon.');
+      }
       const result = await tx.reminderOccurrence.createMany({
         data: additions.map((item) => ({
           reminderId,
@@ -155,7 +166,7 @@ export class ReminderTimeService {
         },
       });
       return result.count;
-    });
+    }, { isolationLevel: 'Serializable' });
     return {
       reminderId,
       scheduleId: schedule.id,
@@ -180,7 +191,7 @@ export class ReminderTimeService {
     const reminder = await this.prisma.reminder.findFirst({
       where: { id: reminderId, userId: principal.userId, lifecycle: 'ACTIVE' },
       include: {
-        schedules: { orderBy: { revision: 'desc' }, take: 1 },
+        schedules: { orderBy: { revision: 'desc' }, take: 1, include: { nudgePolicy: true } },
         occurrences: { where: { id: dto.occurrenceId }, take: 1 },
       },
     });
@@ -207,6 +218,7 @@ export class ReminderTimeService {
         resolved,
         key,
         requestHash,
+        now,
       );
     }
     if (currentSchedule.type === 'ONE_TIME') {
@@ -227,6 +239,11 @@ export class ReminderTimeService {
     );
     const nextRevision = currentSchedule.revision + 1;
     const outcome = await this.prisma.$transaction(async (tx) => {
+      const activeUser = await tx.user.findFirst({
+        where: { id: principal.userId, status: 'ACTIVE', deletedAt: null },
+        select: { id: true },
+      });
+      if (!activeUser) throw new ConflictException('The account is no longer active.');
       const claimed = await tx.reminder.updateMany({
         where: {
           id: reminder.id,
@@ -251,6 +268,17 @@ export class ReminderTimeService {
         where: { id: currentSchedule.id },
         data: { nextEvaluationAt: null },
       });
+      await tx.nudgePolicy.updateMany({
+        where: { scheduleId: currentSchedule.id, invalidatedAt: null },
+        data: { invalidatedAt: now, invalidationReason: 'SCHEDULE_REVISED' },
+      });
+      await tx.notificationAttempt.updateMany({
+        where: {
+          occurrence: { scheduleId: currentSchedule.id, sequence: { gte: selected.sequence } },
+          cancelledAt: null,
+        },
+        data: { cancelledAt: now },
+      });
       const replacement = await tx.schedule.create({
         data: {
           reminderId: reminder.id,
@@ -271,6 +299,17 @@ export class ReminderTimeService {
           supersededScheduleId: currentSchedule.id,
         },
       });
+      if (currentSchedule.nudgePolicy?.enabled) {
+        await tx.nudgePolicy.create({
+          data: {
+            reminderId: reminder.id,
+            scheduleId: replacement.id,
+            scheduleRevision: nextRevision,
+            enabled: true,
+            intervalMinutes: currentSchedule.nudgePolicy.intervalMinutes,
+          },
+        });
+      }
       await tx.reminderOccurrence.createMany({
         data: materialized.map((item) => ({
           reminderId: reminder.id,
@@ -304,7 +343,7 @@ export class ReminderTimeService {
         },
       });
       return { eventId: event.id, cancelledCount: cancelled.count, scheduleId: replacement.id };
-    });
+    }, { isolationLevel: 'Serializable' });
 
     return {
       reminderId: reminder.id,
@@ -367,6 +406,11 @@ export class ReminderTimeService {
     const effectiveLocal = this.schedules.localPartsAtInstant(until, local.timezone);
 
     const eventId = await this.prisma.$transaction(async (tx) => {
+      const activeUser = await tx.user.findFirst({
+        where: { id: principal.userId, status: 'ACTIVE', deletedAt: null },
+        select: { id: true },
+      });
+      if (!activeUser) throw new ConflictException('The account is no longer active.');
       const claimed = await tx.reminderOccurrence.updateMany({
         where: {
           id: occurrence.id,
@@ -383,6 +427,10 @@ export class ReminderTimeService {
       if (claimed.count !== 1) {
         throw new ConflictException('The occurrence changed. Refresh it before snoozing.');
       }
+      await tx.notificationAttempt.updateMany({
+        where: { occurrenceId: occurrence.id, cancelledAt: null },
+        data: { cancelledAt: now },
+      });
       const event = await tx.reminderEvent.create({
         data: {
           userId: principal.userId,
@@ -401,7 +449,7 @@ export class ReminderTimeService {
         },
       });
       return event.id;
-    });
+    }, { isolationLevel: 'Serializable' });
 
     return {
       occurrenceId: occurrence.id,
@@ -430,9 +478,15 @@ export class ReminderTimeService {
     resolved: ReturnType<ReminderScheduleService['resolve']>,
     key: string,
     requestHash: string,
+    now: Date,
   ) {
     const scheduledAt = new Date(resolved.firstOccurrence.scheduledAt);
     const eventId = await this.prisma.$transaction(async (tx) => {
+      const activeUser = await tx.user.findFirst({
+        where: { id: principal.userId, status: 'ACTIVE', deletedAt: null },
+        select: { id: true },
+      });
+      if (!activeUser) throw new ConflictException('The account is no longer active.');
       const claimed = await tx.reminderOccurrence.updateMany({
         where: {
           id: occurrence.id,
@@ -448,6 +502,10 @@ export class ReminderTimeService {
       if (claimed.count !== 1) {
         throw new ConflictException('The occurrence changed. Refresh it before editing.');
       }
+      await tx.notificationAttempt.updateMany({
+        where: { occurrenceId: occurrence.id, cancelledAt: null },
+        data: { cancelledAt: now },
+      });
       const event = await tx.reminderEvent.create({
         data: {
           userId: principal.userId,
@@ -467,7 +525,7 @@ export class ReminderTimeService {
         },
       });
       return event.id;
-    });
+    }, { isolationLevel: 'Serializable' });
     return {
       reminderId: reminder.id,
       reminderRevision: reminder.revision,

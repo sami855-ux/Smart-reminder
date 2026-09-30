@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
+  IsEnum,
   IsInt,
   Matches,
   IsOptional,
@@ -10,12 +11,18 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { OccurrenceListViewDto } from './reminder-action.dto.js';
 import {
   RFC3339_INSTANT_MESSAGE,
   RFC3339_INSTANT_PATTERN,
 } from './rfc3339-instant.js';
 
 export class ListReminderOccurrencesDto {
+  @ApiPropertyOptional({ enum: OccurrenceListViewDto, default: OccurrenceListViewDto.UPCOMING })
+  @IsOptional()
+  @IsEnum(OccurrenceListViewDto)
+  view?: OccurrenceListViewDto;
+
   @ApiPropertyOptional({ format: 'date-time' })
   @IsOptional()
   @IsDateString({ strict: true })
@@ -34,6 +41,22 @@ export class ListReminderOccurrencesDto {
   @IsInt()
   @Min(1)
   @Max(50)
+  limit = 30;
+
+  @ApiPropertyOptional({ description: 'Opaque cursor returned by the previous page.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  cursor?: string;
+}
+
+export class ListReminderEventsDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 30 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit = 30;
 
   @ApiPropertyOptional({ description: 'Opaque cursor returned by the previous page.' })

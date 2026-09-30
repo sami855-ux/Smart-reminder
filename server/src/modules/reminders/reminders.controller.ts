@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -30,7 +31,13 @@ import {
   PreviewReminderDto,
 } from './dto/reminder-create.dto.js';
 import { ParseReminderDto } from './dto/parse-reminder.dto.js';
-import { ListReminderOccurrencesDto } from './dto/reminder-query.dto.js';
+import { ListReminderEventsDto, ListReminderOccurrencesDto } from './dto/reminder-query.dto.js';
+import {
+  DeleteReminderDto,
+  OccurrenceActionDto,
+  UpdateNudgePolicyDto,
+  UpdateReminderContentDto,
+} from './dto/reminder-action.dto.js';
 import {
   EditReminderScheduleDto,
   SnoozeOccurrenceDto,
@@ -42,6 +49,7 @@ import {
   ReminderPreviewResponseDto,
 } from './dto/reminder-response.dto.js';
 import { ReminderParserService } from './reminder-parser.service.js';
+import { ReminderActionsService } from './reminder-actions.service.js';
 import { ReminderTimeService } from './reminder-time.service.js';
 import { RemindersService } from './reminders.service.js';
 
@@ -54,6 +62,7 @@ export class RemindersController {
     private readonly reminders: RemindersService,
     private readonly parser: ReminderParserService,
     private readonly time: ReminderTimeService,
+    private readonly actions: ReminderActionsService,
   ) {}
 
   @Post('reminders/preview')
@@ -122,6 +131,68 @@ export class RemindersController {
     return this.reminders.getReminder(principal.userId, reminderId);
   }
 
+  @Patch('reminders/:reminderId')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Update reminder content with optimistic concurrency' })
+  @ApiOkResponse({ description: 'Updated reminder revision' })
+  @ApiConflictResponse({ description: 'Stale reminder revision or idempotency conflict' })
+  updateContent(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: UpdateReminderContentDto,
+  ) {
+    return this.actions.updateContent(principal, reminderId, idempotencyKey, dto);
+  }
+
+  @Delete('reminders/:reminderId')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Cancel and schedule purge of an owned reminder' })
+  @ApiOkResponse({ description: 'Reminder cancelled and local notifications invalidated' })
+  @ApiConflictResponse({ description: 'Stale reminder revision or idempotency conflict' })
+  deleteReminder(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: DeleteReminderDto,
+  ) {
+    return this.actions.deleteReminder(principal, reminderId, idempotencyKey, dto);
+  }
+
+  @Get('reminders/:reminderId/events')
+  @ApiOperation({ summary: 'List immutable reminder history newest first' })
+  @ApiOkResponse({ description: 'Stable cursor-paginated event history' })
+  listEvents(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+    @Query() query: ListReminderEventsDto,
+  ) {
+    return this.actions.listEvents(principal.userId, reminderId, query.limit, query.cursor);
+  }
+
+  @Get('reminders/:reminderId/nudge-policy')
+  @ApiOperation({ summary: 'Get the bounded follow-up nudge policy for the current schedule' })
+  @ApiOkResponse({ description: 'Current schedule nudge policy; disabled when none exists' })
+  getNudgePolicy(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+  ) {
+    return this.actions.getNudgePolicy(principal.userId, reminderId);
+  }
+
+  @Patch('reminders/:reminderId/nudge-policy')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Enable, change, or disable the single bounded follow-up nudge' })
+  @ApiOkResponse({ description: 'Updated nudge policy' })
+  updateNudgePolicy(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: UpdateNudgePolicyDto,
+  ) {
+    return this.actions.updateNudgePolicy(principal, reminderId, idempotencyKey, dto);
+  }
+
   @Post('reminders/timezone-preview')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -177,5 +248,45 @@ export class RemindersController {
     @Body() dto: SnoozeOccurrenceDto,
   ) {
     return this.time.snooze(principal, occurrenceId, idempotencyKey, dto);
+  }
+
+  @Get('reminder-occurrences/:occurrenceId/explanation')
+  @ApiOperation({ summary: 'Return the deterministic Why now explanation for one occurrence' })
+  @ApiOkResponse({ description: 'Schedule-derived explanation with nudge context' })
+  explainOccurrence(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('occurrenceId', new ParseUUIDPipe()) occurrenceId: string,
+  ) {
+    return this.actions.explainOccurrence(principal.userId, occurrenceId);
+  }
+
+  @Post('reminder-occurrences/:occurrenceId/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Complete a due or overdue occurrence exactly once' })
+  @ApiOkResponse({ description: 'Authoritative terminal occurrence state' })
+  @ApiConflictResponse({ description: 'Occurrence is early, stale, or already terminal' })
+  complete(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('occurrenceId', new ParseUUIDPipe()) occurrenceId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: OccurrenceActionDto,
+  ) {
+    return this.actions.complete(principal, occurrenceId, idempotencyKey, dto);
+  }
+
+  @Post('reminder-occurrences/:occurrenceId/skip')
+  @HttpCode(HttpStatus.OK)
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Skip one recurring occurrence exactly once' })
+  @ApiOkResponse({ description: 'Authoritative terminal occurrence state' })
+  @ApiConflictResponse({ description: 'Occurrence is one-time, stale, or already terminal' })
+  skip(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('occurrenceId', new ParseUUIDPipe()) occurrenceId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: OccurrenceActionDto,
+  ) {
+    return this.actions.skip(principal, occurrenceId, idempotencyKey, dto);
   }
 }

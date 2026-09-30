@@ -49,7 +49,7 @@ describe('RemindersService reads', () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          lifecycle: 'SCHEDULED',
+          lifecycle: { in: ['SCHEDULED'] },
           reminder: { userId, lifecycle: 'ACTIVE' },
         }),
         orderBy: [{ effectiveScheduledAt: 'asc' }, { id: 'asc' }],

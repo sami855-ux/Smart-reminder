@@ -60,8 +60,14 @@ describe('ReminderTimeService', () => {
 
   it('creates a new revision for the selected and all future occurrences', async () => {
     const tx = {
+      user: { findFirst: vi.fn().mockResolvedValue({ id: userId }) },
       reminder: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       reminderOccurrence: { updateMany: vi.fn().mockResolvedValue({ count: 4 }), createMany: vi.fn() },
+      notificationAttempt: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      nudgePolicy: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        create: vi.fn(),
+      },
       schedule: {
         update: vi.fn(),
         create: vi.fn().mockResolvedValue({ id: '40000000-0000-4000-8000-000000000002' }),
@@ -142,7 +148,9 @@ describe('ReminderTimeService', () => {
   it('reschedules only the selected occurrence without revising the series', async () => {
     const selectedAt = new Date('2026-09-28T06:00:00.000Z');
     const tx = {
+      user: { findFirst: vi.fn().mockResolvedValue({ id: userId }) },
       reminderOccurrence: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      notificationAttempt: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       reminderEvent: { create: vi.fn().mockResolvedValue({ id: 'event-occurrence' }) },
       schedule: { create: vi.fn() },
       reminder: { updateMany: vi.fn() },
@@ -218,7 +226,10 @@ describe('ReminderTimeService', () => {
     const firstInstant = new Date('2026-09-27T06:00:00.000Z');
     const tx = {
       reminderOccurrence: { createMany: vi.fn().mockResolvedValue({ count: 2 }) },
-      schedule: { update: vi.fn() },
+      schedule: {
+        findFirst: vi.fn().mockResolvedValue({ id: scheduleId, revision: 1 }),
+        update: vi.fn(),
+      },
     };
     const prisma = {
       schedule: {
@@ -273,7 +284,9 @@ describe('ReminderTimeService', () => {
     const original = new Date('2026-09-27T06:00:00.000Z');
     const until = new Date('2026-09-27T06:30:00.000Z');
     const tx = {
+      user: { findFirst: vi.fn().mockResolvedValue({ id: userId }) },
       reminderOccurrence: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      notificationAttempt: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       reminderEvent: { create: vi.fn().mockResolvedValue({ id: 'event-snooze' }) },
     };
     const prisma = {

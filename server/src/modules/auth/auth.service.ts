@@ -203,7 +203,16 @@ export class AuthService {
   async exportData(principal: AuthPrincipal): Promise<Record<string, unknown>> {
     const user = await this.prisma.user.findFirst({
       where: { id: principal.userId, status: 'ACTIVE', deletedAt: null },
-      select: { id: true, email: true, emailVerifiedAt: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        emailVerifiedAt: true,
+        locale: true,
+        timezone: true,
+        timeFormat: true,
+        profileRevision: true,
+        createdAt: true,
+      },
     });
     if (!user) throw new UnauthorizedException('Authentication is required.');
     const reminders = await this.prisma.reminder.findMany({
@@ -213,8 +222,17 @@ export class AuthService {
         schedules: { orderBy: { revision: 'asc' } },
         occurrences: { orderBy: { originalScheduledAt: 'asc' } },
         events: { orderBy: { createdAt: 'asc' } },
+        nudgePolicies: { orderBy: { scheduleRevision: 'asc' } },
+        notificationAttempts: { orderBy: { createdAt: 'asc' } },
       },
     });
+    const [notificationPreferences, deviceInstallations] = await Promise.all([
+      this.prisma.notificationPreference.findUnique({ where: { userId: user.id } }),
+      this.prisma.deviceInstallation.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
     await this.prisma.authSecurityEvent.create({
       data: { userId: user.id, sessionId: principal.sessionId, type: 'DATA_EXPORTED' },
     });
@@ -226,8 +244,33 @@ export class AuthService {
         id: user.id,
         email: user.email,
         emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
+        locale: user.locale,
+        timezone: user.timezone,
+        timeFormat: user.timeFormat,
+        profileRevision: user.profileRevision,
         createdAt: user.createdAt.toISOString(),
       },
+      notificationPreferences: notificationPreferences
+        ? {
+            quietHoursStart: notificationPreferences.quietHoursStart?.trim() ?? null,
+            quietHoursEnd: notificationPreferences.quietHoursEnd?.trim() ?? null,
+            timezone: notificationPreferences.timezone,
+            lockScreenPrivacy: notificationPreferences.lockScreenPrivacy,
+            globallyPaused: notificationPreferences.globallyPaused,
+            revision: notificationPreferences.revision,
+          }
+        : null,
+      deviceInstallations: deviceInstallations.map((device) => ({
+        id: device.id,
+        platform: device.platform,
+        appVersion: device.appVersion,
+        permissionState: device.permissionState,
+        locale: device.locale,
+        timezone: device.timezone,
+        revision: device.revision,
+        lastSeenAt: device.lastSeenAt.toISOString(),
+        revokedAt: device.revokedAt?.toISOString() ?? null,
+      })),
       reminders: reminders.map((reminder) => ({
         id: reminder.id,
         title: reminder.title,
@@ -270,6 +313,28 @@ export class AuthService {
           metadata: event.metadata,
           createdAt: event.createdAt.toISOString(),
         })),
+        nudgePolicies: reminder.nudgePolicies.map((policy) => ({
+          scheduleId: policy.scheduleId,
+          scheduleRevision: policy.scheduleRevision,
+          enabled: policy.enabled,
+          intervalMinutes: policy.intervalMinutes,
+          invalidatedAt: policy.invalidatedAt?.toISOString() ?? null,
+          invalidationReason: policy.invalidationReason,
+        })),
+        notificationAttempts: reminder.notificationAttempts.map((attempt) => ({
+          occurrenceId: attempt.occurrenceId,
+          deviceInstallationId: attempt.deviceInstallationId,
+          scheduleRevision: attempt.scheduleRevision,
+          effectiveScheduledAt: attempt.effectiveScheduledAt.toISOString(),
+          nudgeStep: attempt.nudgeStep,
+          requestedAt: attempt.requestedAt.toISOString(),
+          locallyScheduledAt: attempt.locallyScheduledAt?.toISOString() ?? null,
+          schedulingFailedAt: attempt.schedulingFailedAt?.toISOString() ?? null,
+          cancelledAt: attempt.cancelledAt?.toISOString() ?? null,
+          openedAt: attempt.openedAt?.toISOString() ?? null,
+          actedOnAt: attempt.actedOnAt?.toISOString() ?? null,
+          errorCode: attempt.errorCode,
+        })),
       })),
     };
   }
@@ -298,6 +363,18 @@ export class AuthService {
         where: { sessionId: { in: sessionIds }, revokedAt: null }, data: { revokedAt: now },
       });
       await tx.authActionToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: now } });
+      await tx.deviceInstallation.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: now, revision: { increment: 1 } },
+      });
+      await tx.notificationAttempt.updateMany({
+        where: { userId: user.id, cancelledAt: null },
+        data: { cancelledAt: now },
+      });
+      await tx.nudgePolicy.updateMany({
+        where: { reminder: { userId: user.id }, invalidatedAt: null },
+        data: { invalidatedAt: now, invalidationReason: 'ACCOUNT_DELETED' },
+      });
       await tx.schedule.updateMany({
         where: { reminder: { userId: user.id } },
         data: { nextEvaluationAt: null },
@@ -308,12 +385,12 @@ export class AuthService {
       });
       await tx.reminder.updateMany({
         where: { userId: user.id, lifecycle: 'ACTIVE' },
-        data: { lifecycle: 'CANCELLED', deletedAt: now },
+        data: { lifecycle: 'CANCELLED', deletedAt: now, purgeAfter },
       });
       await tx.authSecurityEvent.create({
         data: { userId: user.id, sessionId: principal.sessionId, type: 'ACCOUNT_DELETION_REQUESTED', ...metadata },
       });
-    });
+    }, { isolationLevel: 'Serializable' });
     return purgeAfter;
   }
 
@@ -354,7 +431,6 @@ export class AuthService {
 
   async refresh(refreshToken: string, metadata: RequestMetadata): Promise<AuthResponseDto> {
     const now = new Date();
-    const nextExpiresAt = this.tokens.refreshTokenExpiresAt(now);
     const tokenHash = this.tokens.hashRefreshToken(refreshToken);
 
     const outcome = await this.prisma.$transaction<RefreshOutcome>(async (tx) => {
@@ -368,6 +444,9 @@ export class AuthService {
       }
 
       const session = stored.session;
+      const nextExpiresAt = new Date(
+        Math.min(this.tokens.refreshTokenExpiresAt(now).getTime(), session.expiresAt.getTime()),
+      );
       const tokenWasUsed = stored.usedAt !== null || stored.revokedAt !== null;
       if (tokenWasUsed) {
         await this.revokeSessionFamily(tx, session.id, 'TOKEN_REUSE', now);

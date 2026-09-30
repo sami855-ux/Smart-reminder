@@ -104,6 +104,7 @@ describe('RemindersService idempotent creation', () => {
   it('commits the reminder, schedule, first occurrence, event, and key in one transaction', async () => {
     const record = reminderRecord();
     const tx = {
+      user: { findFirst: vi.fn().mockResolvedValue({ id: userId }) },
       reminder: { create: vi.fn().mockResolvedValue({ id: record.id }) },
       schedule: { create: vi.fn().mockResolvedValue({ id: record.schedules[0]!.id }) },
       reminderOccurrence: {
