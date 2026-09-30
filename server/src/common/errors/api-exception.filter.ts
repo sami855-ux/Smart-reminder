@@ -9,8 +9,10 @@ import {
 import type { Request, Response } from 'express';
 
 type ValidationResponse = {
+  code?: string;
   message?: string | string[];
   error?: string;
+  details?: unknown;
 };
 
 @Catch()
@@ -38,11 +40,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
 
     response.status(status).json({
+      version: 1,
       code: normalized.code,
       message: normalized.message,
       requestId: request.requestId,
       retryable: status === 429 || status >= 500,
       ...(normalized.fieldErrors ? { fieldErrors: normalized.fieldErrors } : {}),
+      ...(normalized.details !== undefined ? { details: normalized.details } : {}),
     });
   }
 
@@ -53,6 +57,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     code: string;
     message: string;
     fieldErrors?: Record<string, string[]>;
+    details?: unknown;
   } {
     if (typeof value === 'string') {
       return { code: this.codeForStatus(status), message: value };
@@ -68,13 +73,17 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
 
     return {
-      code: this.codeForStatus(status),
+      code:
+        typeof body.code === 'string' && /^[A-Z][A-Z0-9_]{2,63}$/u.test(body.code)
+          ? body.code
+          : this.codeForStatus(status),
       message:
         typeof body.message === 'string'
           ? body.message
           : status >= 500
             ? 'An unexpected error occurred.'
             : 'The request could not be completed.',
+      ...(body.details !== undefined ? { details: body.details } : {}),
     };
   }
 
