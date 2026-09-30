@@ -127,11 +127,17 @@ pnpm build
 pnpm openapi:generate
 ```
 
-Database-backed endpoint verification additionally requires a running PostgreSQL instance and an applied migration.
+Database-backed endpoint verification additionally requires a running PostgreSQL instance and an applied migration:
+
+```sh
+RUN_DB_E2E=true pnpm test
+```
+
+The server CI workflow applies the migrations and enables this suite automatically.
 
 ## Remaining release validation
 
-- Run the migrations and endpoint integration suite against PostgreSQL.
+- Confirm the CI/staging migration and database-backed HTTP integration suite on the target PostgreSQL environment.
 - Verify SMTP delivery and mobile deep links with the selected provider.
 - Configure the database provider's expired-backup deletion policy to 90 days or less.
 - Use a shared throttler store before running more than one API replica; the MVP single-process configuration uses in-memory counters.

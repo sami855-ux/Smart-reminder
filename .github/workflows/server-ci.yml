@@ -37,6 +37,7 @@ jobs:
       AUTH_AUDIT_PEPPER: ci-only-auth-audit-pepper-with-32-characters
       AUTH_PUBLIC_APP_URL: http://localhost:8081
       SWAGGER_ENABLED: "true"
+      RUN_DB_E2E: "true"
 
     steps:
       - uses: actions/checkout@v4

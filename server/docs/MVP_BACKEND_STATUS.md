@@ -16,7 +16,7 @@ This document tracks the backend portion of `docs/MVP_REQUIREMENTS.md`. Mobile-o
 | Preferences and devices | Account locale/time format, notification timezone/quiet hours/privacy/pause, installation reconciliation/revocation, and revision checks |
 | Local notification observability | Idempotent per-occurrence/device/revision/nudge-step outcome reports for requested, locally scheduled, failed, cancelled, opened, and acted-on states |
 | Security and ownership | Session-derived identity, ownership-scoped queries, strict DTO validation, serializable state-changing transactions, request IDs, sanitized versioned errors, and single-process account/network throttles |
-| Contract and operations | Prisma migration `20260930090000_mvp_backend_completion`, generated `docs/openapi.json`, API Dockerfile, PostgreSQL CI migration gate, liveness/readiness probes, account/reminder purge jobs |
+| Contract and operations | Prisma migration `20260930090000_mvp_backend_completion`, generated `docs/openapi.json`, API Dockerfile, PostgreSQL CI migration and HTTP integration gate, liveness/readiness probes, account/reminder purge jobs |
 
 ## Verification commands
 
@@ -29,9 +29,11 @@ pnpm openapi:generate
 git diff --check
 ```
 
+With an isolated, migrated PostgreSQL database available, run the authenticated HTTP workflow with `RUN_DB_E2E=true pnpm test`. The CI workflow enables it automatically.
+
 ## Release evidence still required
 
-- Apply all migrations to an isolated or staging PostgreSQL database and run database-backed HTTP/concurrency tests.
+- Confirm the migration and database-backed HTTP suite in CI or staging, then add focused concurrent-action load evidence before release.
 - Verify the selected SMTP provider and verified HTTPS app links for verification/reset flows.
 - Configure a shared throttler store before running multiple API replicas.
 - Run purge work through a durable scheduler with alerting before relying on multi-replica in-process timers.
