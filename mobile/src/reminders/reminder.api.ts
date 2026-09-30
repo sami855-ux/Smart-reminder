@@ -4,12 +4,20 @@ import { requestWithAccessToken } from '../api/client';
 import { toApiError } from '../api/errors';
 import {
   createdReminderSchema,
+  nudgePolicySchema,
+  occurrenceActionResultSchema,
+  occurrenceExplanationSchema,
   occurrencePageSchema,
   parseReminderResponseSchema,
   reminderDetailSchema,
+  reminderEventPageSchema,
+  reminderMutationResultSchema,
   reminderPreviewSchema,
   timezonePreviewSchema,
   type CreatedReminder,
+  type NudgePolicy,
+  type OccurrenceActionResult,
+  type OccurrenceExplanation,
   type ParseReminderResponse,
   type ReminderDetail,
   type ReminderPreview,
@@ -73,14 +81,170 @@ export async function parseReminder(input: {
 }
 
 export async function listReminderOccurrences(input: {
-  from: string;
-  to: string;
+  view?: 'UPCOMING' | 'OVERDUE' | 'COMPLETED' | 'ALL';
+  from?: string;
+  to?: string;
   limit?: number;
+  cursor?: string;
 }) {
   try {
     return await requestWithAccessToken(
       { method: 'GET', url: '/reminder-occurrences', params: input },
       occurrencePageSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function completeOccurrence(input: {
+  occurrenceId: string;
+  expectedScheduleRevision: number;
+  expectedEffectiveScheduledAt: string;
+  idempotencyKey: string;
+}): Promise<OccurrenceActionResult> {
+  const { occurrenceId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'POST',
+        url: `/reminder-occurrences/${occurrenceId}/complete`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      occurrenceActionResultSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function skipOccurrence(input: {
+  occurrenceId: string;
+  expectedScheduleRevision: number;
+  expectedEffectiveScheduledAt: string;
+  idempotencyKey: string;
+}): Promise<OccurrenceActionResult> {
+  const { occurrenceId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'POST',
+        url: `/reminder-occurrences/${occurrenceId}/skip`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      occurrenceActionResultSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function updateReminderContent(input: {
+  reminderId: string;
+  expectedRevision: number;
+  title?: string;
+  contextNote?: string | null;
+  idempotencyKey: string;
+}) {
+  const { reminderId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'PATCH',
+        url: `/reminders/${reminderId}`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      reminderMutationResultSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function deleteReminder(input: {
+  reminderId: string;
+  expectedRevision: number;
+  idempotencyKey: string;
+}) {
+  const { reminderId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'DELETE',
+        url: `/reminders/${reminderId}`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      reminderMutationResultSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function getNudgePolicy(reminderId: string): Promise<NudgePolicy> {
+  try {
+    return await requestWithAccessToken(
+      { method: 'GET', url: `/reminders/${reminderId}/nudge-policy` },
+      nudgePolicySchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+const nudgeMutationSchema = z
+  .object({
+    reminderId: z.uuid(),
+    eventId: z.uuid(),
+    idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+  })
+  .passthrough();
+
+export async function updateNudgePolicy(input: {
+  reminderId: string;
+  expectedReminderRevision: number;
+  enabled: boolean;
+  intervalMinutes?: number;
+  idempotencyKey: string;
+}) {
+  const { reminderId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'PATCH',
+        url: `/reminders/${reminderId}/nudge-policy`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      nudgeMutationSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function listReminderEvents(reminderId: string, limit = 30) {
+  try {
+    return await requestWithAccessToken(
+      { method: 'GET', url: `/reminders/${reminderId}/events`, params: { limit } },
+      reminderEventPageSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function getOccurrenceExplanation(
+  occurrenceId: string,
+): Promise<OccurrenceExplanation> {
+  try {
+    return await requestWithAccessToken(
+      { method: 'GET', url: `/reminder-occurrences/${occurrenceId}/explanation` },
+      occurrenceExplanationSchema,
     );
   } catch (error) {
     throw toApiError(error);

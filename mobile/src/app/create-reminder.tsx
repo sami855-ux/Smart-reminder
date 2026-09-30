@@ -256,6 +256,8 @@ export default function CreateReminderScreen() {
         message:
           result.scheduling.status === 'scheduled'
             ? `${result.scheduling.count} local notification${result.scheduling.count === 1 ? '' : 's'} scheduled.`
+            : result.scheduling.status === 'paused'
+              ? 'Saved to your account. Notifications are currently paused.'
             : result.scheduling.status === 'unavailable'
               ? 'Saved to your account. Use a development build to schedule device alerts.'
               : 'Saved to your account, but device scheduling needs attention.',

@@ -246,7 +246,13 @@ export default function AccountScreen() {
             <SectionLabel>PREFERENCES</SectionLabel>
             <SettingsGroup>
               <SettingsAction
+                description="Manage quiet hours, privacy, permission, and signed-in devices"
+                onPress={() => router.push('/notification-settings')}
+                title="Notifications and devices"
+              />
+              <SettingsAction
                 description="Preview the impact before changing how reminder times display"
+                divider
                 onPress={() => router.push('/timezone-settings')}
                 title="Timezone and schedule impact"
               />

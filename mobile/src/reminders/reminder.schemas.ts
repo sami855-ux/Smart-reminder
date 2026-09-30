@@ -122,7 +122,7 @@ export const occurrenceListItemSchema = z
     timezone: z.string(),
     weekdays: z.array(z.number().int()),
     sequence: z.number().int().positive(),
-    lifecycle: z.literal('SCHEDULED'),
+    lifecycle: z.enum(['SCHEDULED', 'COMPLETED', 'SKIPPED', 'CANCELLED']),
     localDate: z.string(),
     localTime: z.string(),
     originalScheduledAt: z.string().datetime(),
@@ -217,6 +217,87 @@ export const parseReminderResponseSchema = z
   })
   .strict();
 
+export const occurrenceActionResultSchema = z
+  .object({
+    occurrenceId: z.uuid(),
+    reminderId: z.uuid(),
+    lifecycle: z.enum(['COMPLETED', 'SKIPPED']).nullable(),
+    effectiveScheduledAt: z.string().datetime().nullable(),
+    reminderLifecycle: z.enum(['ACTIVE', 'CANCELLED', 'ARCHIVED']).nullable(),
+    eventId: z.uuid(),
+    idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+  })
+  .strict();
+
+export const reminderMutationResultSchema = z
+  .object({
+    reminderId: z.uuid(),
+    revision: z.number().int().positive().optional(),
+    lifecycle: z.enum(['ACTIVE', 'CANCELLED', 'ARCHIVED']).optional(),
+    purgeAfter: z.string().datetime().optional(),
+    cancelledOccurrenceCount: z.number().int().nonnegative().optional(),
+    eventId: z.uuid(),
+    idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+  })
+  .passthrough();
+
+export const nudgePolicySchema = z
+  .object({
+    reminderId: z.uuid(),
+    reminderRevision: z.number().int().positive(),
+    scheduleId: z.uuid(),
+    scheduleRevision: z.number().int().positive(),
+    enabled: z.boolean(),
+    intervalMinutes: z.number().int().nullable(),
+    invalidatedAt: z.string().datetime().nullable(),
+    invalidationReason: z.string().nullable(),
+    eventId: z.uuid().optional(),
+    idempotency: z
+      .object({ key: z.string(), replayed: z.boolean() })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const reminderEventSchema = z
+  .object({
+    id: z.uuid(),
+    reminderId: z.uuid(),
+    occurrenceId: z.uuid().nullable(),
+    actorType: z.enum(['USER', 'SYSTEM', 'DEVICE']),
+    type: z.string(),
+    metadata: z.unknown().nullable(),
+    createdAt: z.string().datetime(),
+  })
+  .strict();
+
+export const reminderEventPageSchema = z
+  .object({
+    items: z.array(reminderEventSchema),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+
+export const occurrenceExplanationSchema = z
+  .object({
+    occurrenceId: z.uuid(),
+    reminderId: z.uuid(),
+    reminderRevision: z.number().int().positive(),
+    reminderLifecycle: z.enum(['ACTIVE', 'CANCELLED', 'ARCHIVED']),
+    lifecycle: z.enum(['SCHEDULED', 'COMPLETED', 'SKIPPED', 'CANCELLED']),
+    scheduleRevision: z.number().int().positive(),
+    originalScheduledAt: z.string().datetime(),
+    effectiveScheduledAt: z.string().datetime(),
+    reason: z.string(),
+    nudge: z
+      .object({
+        enabled: z.boolean(),
+        intervalMinutes: z.number().int().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export type ReminderScheduleInput = z.infer<typeof reminderScheduleInputSchema>;
 export type ReminderPreview = z.infer<typeof reminderPreviewSchema>;
 export type CreatedReminder = z.infer<typeof createdReminderSchema>;
@@ -224,3 +305,7 @@ export type OccurrenceListItem = z.infer<typeof occurrenceListItemSchema>;
 export type ReminderDetail = z.infer<typeof reminderDetailSchema>;
 export type TimezonePreview = z.infer<typeof timezonePreviewSchema>;
 export type ParseReminderResponse = z.infer<typeof parseReminderResponseSchema>;
+export type OccurrenceActionResult = z.infer<typeof occurrenceActionResultSchema>;
+export type NudgePolicy = z.infer<typeof nudgePolicySchema>;
+export type ReminderEvent = z.infer<typeof reminderEventSchema>;
+export type OccurrenceExplanation = z.infer<typeof occurrenceExplanationSchema>;

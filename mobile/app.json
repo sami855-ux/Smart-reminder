@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "permissions": ["SCHEDULE_EXACT_ALARM"],
       "adaptiveIcon": {
         "backgroundColor": "#F3F3F0",
         "foregroundImage": "./assets/android-icon-foreground.png",

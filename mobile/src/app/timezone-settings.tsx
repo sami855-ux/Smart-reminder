@@ -11,6 +11,12 @@ import { useToast } from '../components/ui/ToastProvider';
 import { cn } from '../lib/cn';
 import { useOnboarding } from '../onboarding/onboarding-context';
 import { getTimeZoneOptions } from '../onboarding/device-preferences';
+import {
+  getNotificationPreferences,
+  getProfilePreferences,
+  updateNotificationPreferences,
+  updateProfilePreferences,
+} from '../preferences/preferences.api';
 import { previewTimezoneChange } from '../reminders/reminder.api';
 
 export default function TimezoneSettingsScreen() {
@@ -49,6 +55,22 @@ export default function TimezoneSettingsScreen() {
     if (!preview.data || selected === state.preferences.timezone) return;
     setSaving(true);
     try {
+      const [remote, notifications] = await Promise.all([
+        getProfilePreferences(),
+        getNotificationPreferences(),
+      ]);
+      await Promise.all([
+        updateProfilePreferences({
+          expectedRevision: remote.revision,
+          locale: state.preferences.locale,
+          timezone: selected,
+          timeFormat: state.preferences.timeFormat === '12-hour' ? 'H12' : 'H24',
+        }),
+        updateNotificationPreferences({
+          expectedRevision: notifications.revision,
+          timezone: selected,
+        }),
+      ]);
       await savePreferences({ ...state.preferences, timezone: selected });
       showToast({
         title: 'Display timezone updated',
@@ -56,6 +78,12 @@ export default function TimezoneSettingsScreen() {
         tone: 'success',
       });
       router.back();
+    } catch (error) {
+      showToast({
+        title: 'Couldn’t save the timezone',
+        message: formErrorMessage(error),
+        tone: 'error',
+      });
     } finally {
       setSaving(false);
     }
