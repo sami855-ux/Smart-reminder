@@ -1,0 +1,2446 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/health/live": {
+      "get": {
+        "operationId": "HealthController_live",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "status": "ok"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Process liveness probe",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "HealthController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "status": "ready"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Database readiness probe",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Register an account and create the first device session",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid email or password"
+          }
+        },
+        "summary": "Authenticate with email and password",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/email-verification/request": {
+      "post": {
+        "operationId": "AuthController_requestEmailVerification",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send a new email-verification link",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/email-verification/complete": {
+      "post": {
+        "operationId": "AuthController_verifyEmail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Verify email ownership with a one-time token",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/password-reset/request": {
+      "post": {
+        "operationId": "AuthController_requestPasswordReset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Request a password-reset email; response is always generic",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/password-reset/complete": {
+      "post": {
+        "operationId": "AuthController_completePasswordReset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompletePasswordResetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Set a new password with a one-time reset token",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, expired, or reused refresh token"
+          }
+        },
+        "summary": "Rotate a refresh token and issue a new access token",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoke the current device session",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/logout-all": {
+      "post": {
+        "operationId": "AuthController_logoutAll",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoke all sessions for the current account",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthUserDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Return the authenticated account identity",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/export": {
+      "get": {
+        "operationId": "AuthController_exportData",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export account and reminder data as versioned JSON",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/account": {
+      "delete": {
+        "operationId": "AuthController_deleteAccount",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Disable the account, revoke sessions, and schedule primary-data purge",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/reminders/preview": {
+      "post": {
+        "operationId": "RemindersController_preview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewReminderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Structured preview with recurrence and first occurrence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderPreviewResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unsupported, or past schedule"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resolve and validate a reminder schedule without persisting it",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders": {
+      "post": {
+        "operationId": "RemindersController_create",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Stable 8–128 character key reused only for the same create intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReminderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created reminder, schedule, and first occurrence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedReminderResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing confirmation, invalid key, or invalid schedule"
+          },
+          "409": {
+            "description": "Idempotency key reused with a different request"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create one explicitly confirmed reminder atomically",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/parse-reminder": {
+      "post": {
+        "operationId": "RemindersController_parse",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseReminderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Schema-validated proposal, confidence, ambiguities, warnings, and alternatives",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseReminderResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Parse a bounded natural-language draft into an editable proposal without creating it",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminder-occurrences": {
+      "get": {
+        "operationId": "RemindersController_listOccurrences",
+        "parameters": [
+          {
+            "name": "view",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "UPCOMING",
+              "type": "string",
+              "enum": [
+                "UPCOMING",
+                "OVERDUE",
+                "COMPLETED",
+                "ALL"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 30,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Opaque cursor returned by the previous page.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stable time-ordered occurrence page"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the signed-in user’s scheduled reminder occurrences",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders/{reminderId}": {
+      "get": {
+        "operationId": "RemindersController_getReminder",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reminder detail"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one owned reminder with its current schedule and occurrences",
+        "tags": [
+          "Reminders"
+        ]
+      },
+      "patch": {
+        "operationId": "RemindersController_updateContent",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReminderContentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated reminder revision"
+          },
+          "409": {
+            "description": "Stale reminder revision or idempotency conflict"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update reminder content with optimistic concurrency",
+        "tags": [
+          "Reminders"
+        ]
+      },
+      "delete": {
+        "operationId": "RemindersController_deleteReminder",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteReminderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reminder cancelled and local notifications invalidated"
+          },
+          "409": {
+            "description": "Stale reminder revision or idempotency conflict"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cancel and schedule purge of an owned reminder",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders/{reminderId}/events": {
+      "get": {
+        "operationId": "RemindersController_listEvents",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Opaque cursor returned by the previous page.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stable cursor-paginated event history"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List immutable reminder history newest first",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders/{reminderId}/nudge-policy": {
+      "get": {
+        "operationId": "RemindersController_getNudgePolicy",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current schedule nudge policy; disabled when none exists"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the bounded follow-up nudge policy for the current schedule",
+        "tags": [
+          "Reminders"
+        ]
+      },
+      "patch": {
+        "operationId": "RemindersController_updateNudgePolicy",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNudgePolicyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated nudge policy"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Enable, change, or disable the single bounded follow-up nudge",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders/timezone-preview": {
+      "post": {
+        "operationId": "RemindersController_previewTimezoneChange",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimezonePreviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Read-only timezone impact preview; schedules are never rewritten"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Preview how existing schedule instants display in a proposed account timezone",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders/{reminderId}/materialize-occurrences": {
+      "post": {
+        "operationId": "RemindersController_materializeOccurrences",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Number of independently stored occurrences added"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idempotently extend the current recurring occurrence horizon",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders/{reminderId}/schedule": {
+      "patch": {
+        "operationId": "RemindersController_editSchedule",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditReminderScheduleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Occurrence-only change or new schedule revision"
+          },
+          "409": {
+            "description": "Stale reminder or occurrence revision"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reschedule one occurrence or create a revision for this and future occurrences",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminder-occurrences/{occurrenceId}/snooze": {
+      "post": {
+        "operationId": "RemindersController_snooze",
+        "parameters": [
+          {
+            "name": "occurrenceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnoozeOccurrenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated effective time for the selected occurrence only"
+          },
+          "409": {
+            "description": "Stale or terminal occurrence"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Snooze exactly one occurrence without moving its series",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminder-occurrences/{occurrenceId}/explanation": {
+      "get": {
+        "operationId": "RemindersController_explainOccurrence",
+        "parameters": [
+          {
+            "name": "occurrenceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule-derived explanation with nudge context"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Return the deterministic Why now explanation for one occurrence",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminder-occurrences/{occurrenceId}/complete": {
+      "post": {
+        "operationId": "RemindersController_complete",
+        "parameters": [
+          {
+            "name": "occurrenceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OccurrenceActionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authoritative terminal occurrence state"
+          },
+          "409": {
+            "description": "Occurrence is early, stale, or already terminal"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Complete a due or overdue occurrence exactly once",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminder-occurrences/{occurrenceId}/skip": {
+      "post": {
+        "operationId": "RemindersController_skip",
+        "parameters": [
+          {
+            "name": "occurrenceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OccurrenceActionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authoritative terminal occurrence state"
+          },
+          "409": {
+            "description": "Occurrence is one-time, stale, or already terminal"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Skip one recurring occurrence exactly once",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/device-installations": {
+      "get": {
+        "operationId": "NotificationsController_listDevices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Owned active and revoked installations"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List device installations owned by the signed-in account",
+        "tags": [
+          "Notifications and devices"
+        ]
+      }
+    },
+    "/device-installations/{installationId}": {
+      "put": {
+        "operationId": "NotificationsController_registerDevice",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceInstallationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authoritative installation and revision"
+          },
+          "409": {
+            "description": "Stale installation revision or revoked installation"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Register or reconcile one client-generated installation ID",
+        "tags": [
+          "Notifications and devices"
+        ]
+      },
+      "delete": {
+        "operationId": "NotificationsController_revokeDevice",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked installation; repeated requests are harmless"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoke a device and cancel its reported local notification mappings",
+        "tags": [
+          "Notifications and devices"
+        ]
+      }
+    },
+    "/notification-preferences": {
+      "get": {
+        "operationId": "NotificationsController_getPreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Current preferences or revision-zero defaults"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get quiet-hours, privacy, timezone, and global-pause settings",
+        "tags": [
+          "Notifications and devices"
+        ]
+      },
+      "patch": {
+        "operationId": "NotificationsController_updatePreferences",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNotificationPreferencesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated preference revision"
+          },
+          "409": {
+            "description": "Stale preference revision"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update notification preferences with optimistic concurrency",
+        "tags": [
+          "Notifications and devices"
+        ]
+      }
+    },
+    "/me/preferences": {
+      "get": {
+        "operationId": "NotificationsController_getProfilePreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Current profile preferences and revision"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get account locale, timezone, and 12/24-hour preference",
+        "tags": [
+          "Notifications and devices"
+        ]
+      },
+      "patch": {
+        "operationId": "NotificationsController_updateProfilePreferences",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfilePreferencesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile preferences and revision"
+          },
+          "409": {
+            "description": "Stale profile revision"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update account locale, timezone, and time format atomically",
+        "tags": [
+          "Notifications and devices"
+        ]
+      }
+    },
+    "/notification-attempts": {
+      "post": {
+        "operationId": "NotificationsController_reportAttempt",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportNotificationAttemptDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authoritative logical attempt state"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Report an idempotent local notification scheduling outcome",
+        "tags": [
+          "Notifications and devices"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Smart Reminder API",
+    "description": "Versioned API for the Smart Reminder mobile application",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "maxLength": 320
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 128,
+            "writeOnly": true
+          },
+          "deviceName": {
+            "type": "string",
+            "example": "Sam’s Android phone",
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "AuthUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "emailVerifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "emailVerifiedAt"
+        ]
+      },
+      "AuthResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "accessTokenExpiresInSeconds": {
+            "type": "number",
+            "example": 900
+          },
+          "refreshTokenExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/AuthUserDto"
+          }
+        },
+        "required": [
+          "accessToken",
+          "refreshToken",
+          "accessTokenExpiresInSeconds",
+          "refreshTokenExpiresAt",
+          "user"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "maxLength": 320
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "writeOnly": true
+          },
+          "deviceName": {
+            "type": "string",
+            "example": "Sam’s iPhone",
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "TokenDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 256,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "EmailRequestDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "maxLength": 320
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "CompletePasswordResetDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 256,
+            "writeOnly": true
+          },
+          "newPassword": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 128,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "token",
+          "newPassword"
+        ]
+      },
+      "RefreshTokenDto": {
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string",
+            "writeOnly": true,
+            "minLength": 43,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "refreshToken"
+        ]
+      },
+      "ConfirmPasswordDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ]
+      },
+      "ReminderScheduleDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ONE_TIME",
+              "DAILY",
+              "WEEKLY",
+              "SELECTED_WEEKDAYS"
+            ]
+          },
+          "localDate": {
+            "type": "string",
+            "example": "2026-09-27",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "localTime": {
+            "type": "string",
+            "example": "09:00",
+            "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Africa/Addis_Ababa",
+            "maxLength": 100
+          },
+          "weekdays": {
+            "type": "array",
+            "description": "Required only for SELECTED_WEEKDAYS. Sunday is 0 and Saturday is 6.",
+            "example": [
+              1,
+              3,
+              5
+            ],
+            "items": {
+              "type": "number",
+              "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Inclusive local end date for a finite recurring series.",
+            "example": "2026-12-31"
+          },
+          "occurrenceCount": {
+            "type": "number",
+            "description": "Maximum occurrences for a finite recurring series.",
+            "minimum": 1,
+            "maximum": 500
+          }
+        },
+        "required": [
+          "type",
+          "localDate",
+          "localTime",
+          "timezone"
+        ]
+      },
+      "PreviewReminderDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "contextNote": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ReminderScheduleDto"
+          }
+        },
+        "required": [
+          "title",
+          "schedule"
+        ]
+      },
+      "FirstOccurrencePreviewDto": {
+        "type": "object",
+        "properties": {
+          "localDate": {
+            "type": "string",
+            "example": "2026-09-27"
+          },
+          "localTime": {
+            "type": "string",
+            "example": "09:00"
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "localDate",
+          "localTime",
+          "scheduledAt"
+        ]
+      },
+      "ScheduleAdjustmentDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "DST_GAP_MOVED_FORWARD"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestedLocalDate": {
+            "type": "string"
+          },
+          "requestedLocalTime": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requestedLocalDate",
+          "requestedLocalTime"
+        ]
+      },
+      "ResolvedScheduleDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ONE_TIME",
+              "DAILY",
+              "WEEKLY",
+              "SELECTED_WEEKDAYS"
+            ]
+          },
+          "localDate": {
+            "type": "string"
+          },
+          "localTime": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "weekdays": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "endDate": {
+            "type": "object",
+            "nullable": true
+          },
+          "occurrenceCount": {
+            "type": "object",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 500
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "utcOffsetMinutes": {
+            "type": "number"
+          },
+          "recurrenceSummary": {
+            "type": "string"
+          },
+          "firstOccurrence": {
+            "$ref": "#/components/schemas/FirstOccurrencePreviewDto"
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleAdjustmentDto"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "localDate",
+          "localTime",
+          "timezone",
+          "weekdays",
+          "resolvedAt",
+          "utcOffsetMinutes",
+          "recurrenceSummary",
+          "firstOccurrence",
+          "adjustments"
+        ]
+      },
+      "ReminderPreviewResponseDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "contextNote": {
+            "type": "object",
+            "nullable": true
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ResolvedScheduleDto"
+          },
+          "requiresConfirmation": {
+            "type": "boolean",
+            "example": true
+          },
+          "persisted": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "title",
+          "schedule",
+          "requiresConfirmation",
+          "persisted"
+        ]
+      },
+      "CreateReminderDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "contextNote": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ReminderScheduleDto"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Affirms that the user reviewed and explicitly confirmed the structured preview.",
+            "example": true
+          },
+          "confirmedResolvedAt": {
+            "type": "string",
+            "description": "The resolved first-occurrence instant returned by preview and explicitly confirmed by the user.",
+            "example": "2026-09-27T06:00:00.000Z",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "title",
+          "schedule",
+          "confirmed",
+          "confirmedResolvedAt"
+        ]
+      },
+      "StoredScheduleDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "ONE_TIME",
+              "DAILY",
+              "WEEKLY",
+              "SELECTED_WEEKDAYS"
+            ]
+          },
+          "localDate": {
+            "type": "string"
+          },
+          "localTime": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "weekdays": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "endDate": {
+            "type": "object",
+            "nullable": true
+          },
+          "occurrenceCount": {
+            "type": "object",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 500
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "utcOffsetMinutes": {
+            "type": "number"
+          },
+          "revision": {
+            "type": "number"
+          },
+          "materializedThrough": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "localDate",
+          "localTime",
+          "timezone",
+          "weekdays",
+          "resolvedAt",
+          "utcOffsetMinutes",
+          "revision",
+          "materializedThrough"
+        ]
+      },
+      "StoredOccurrenceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scheduleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scheduleRevision": {
+            "type": "number"
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "SCHEDULED",
+              "COMPLETED",
+              "SKIPPED",
+              "CANCELLED"
+            ]
+          },
+          "localDate": {
+            "type": "string"
+          },
+          "localTime": {
+            "type": "string"
+          },
+          "originalScheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "effectiveScheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "scheduleId",
+          "scheduleRevision",
+          "lifecycle",
+          "localDate",
+          "localTime",
+          "originalScheduledAt",
+          "effectiveScheduledAt"
+        ]
+      },
+      "IdempotencyResultDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "replayed"
+        ]
+      },
+      "CreatedReminderResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "contextNote": {
+            "type": "object",
+            "nullable": true
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "CANCELLED",
+              "ARCHIVED"
+            ]
+          },
+          "revision": {
+            "type": "number"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/StoredScheduleDto"
+          },
+          "firstOccurrence": {
+            "$ref": "#/components/schemas/StoredOccurrenceDto"
+          },
+          "idempotency": {
+            "$ref": "#/components/schemas/IdempotencyResultDto"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "lifecycle",
+          "revision",
+          "schedule",
+          "firstOccurrence",
+          "idempotency",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ParseReminderDto": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "example": "Remind me tomorrow at 9 to call John.",
+            "maxLength": 2000
+          },
+          "referenceInstant": {
+            "type": "string",
+            "example": "2026-09-26T10:00:00.000Z",
+            "format": "date-time"
+          },
+          "locale": {
+            "type": "string",
+            "example": "en-US",
+            "maxLength": 35
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Africa/Addis_Ababa",
+            "maxLength": 100
+          },
+          "timeFormat": {
+            "type": "string",
+            "enum": [
+              "12-hour",
+              "24-hour"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "referenceInstant",
+          "locale",
+          "timezone",
+          "timeFormat"
+        ]
+      },
+      "ParseReminderResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "SUCCESS",
+              "NEEDS_CLARIFICATION",
+              "UNAVAILABLE"
+            ]
+          },
+          "draft": {
+            "type": "object",
+            "description": "Original input is returned so the client can preserve the editable draft.",
+            "example": {
+              "originalText": "Remind me tomorrow at 9 to call John.",
+              "preserved": true,
+              "manualFormAvailable": true
+            }
+          },
+          "structured": {
+            "type": "object",
+            "nullable": true,
+            "description": "Bounded editable fields. Missing ambiguous fields are null."
+          },
+          "preview": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedScheduleDto"
+              }
+            ]
+          },
+          "confidence": {
+            "type": "object",
+            "description": "Per-field confidence values in the inclusive range 0–1."
+          },
+          "inferredFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ambiguities": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Required user clarifications with references to supported alternatives."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Unsupported clauses and non-blocking parser warnings; clauses remain visible."
+          },
+          "supportedAlternatives": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "requiresConfirmation": {
+            "type": "boolean",
+            "example": true
+          },
+          "created": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "status",
+          "draft",
+          "structured",
+          "preview",
+          "confidence",
+          "inferredFields",
+          "ambiguities",
+          "warnings",
+          "supportedAlternatives",
+          "requiresConfirmation",
+          "created"
+        ]
+      },
+      "Object": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateReminderContentDto": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "contextNote": {
+            "type": "object",
+            "maxLength": 2000,
+            "nullable": true
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ]
+      },
+      "DeleteReminderDto": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ]
+      },
+      "UpdateNudgePolicyDto": {
+        "type": "object",
+        "properties": {
+          "expectedReminderRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "intervalMinutes": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 1440
+          }
+        },
+        "required": [
+          "expectedReminderRevision",
+          "enabled"
+        ]
+      },
+      "TimezonePreviewDto": {
+        "type": "object",
+        "properties": {
+          "proposedTimezone": {
+            "type": "string",
+            "example": "America/New_York",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "proposedTimezone"
+        ]
+      },
+      "EditReminderScheduleDto": {
+        "type": "object",
+        "properties": {
+          "occurrenceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "THIS_OCCURRENCE",
+              "THIS_AND_FUTURE"
+            ]
+          },
+          "expectedReminderRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "expectedEffectiveScheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ReminderScheduleDto"
+          }
+        },
+        "required": [
+          "occurrenceId",
+          "scope",
+          "expectedReminderRevision",
+          "expectedEffectiveScheduledAt",
+          "schedule"
+        ]
+      },
+      "SnoozeOccurrenceDto": {
+        "type": "object",
+        "properties": {
+          "until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339 instant, 5 minutes to 30 days ahead."
+          },
+          "expectedScheduleRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "expectedEffectiveScheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "until",
+          "expectedScheduleRevision",
+          "expectedEffectiveScheduledAt"
+        ]
+      },
+      "OccurrenceActionDto": {
+        "type": "object",
+        "properties": {
+          "expectedScheduleRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "expectedEffectiveScheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "expectedScheduleRevision",
+          "expectedEffectiveScheduledAt"
+        ]
+      },
+      "RegisterDeviceInstallationDto": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "ANDROID",
+              "IOS"
+            ]
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "permissionState": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "GRANTED",
+              "DENIED",
+              "PROVISIONAL",
+              "EPHEMERAL"
+            ]
+          },
+          "locale": {
+            "type": "string",
+            "maxLength": 35,
+            "example": "en-US"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Africa/Addis_Ababa"
+          },
+          "expectedRevision": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Required when updating an existing installation."
+          }
+        },
+        "required": [
+          "platform",
+          "appVersion",
+          "permissionState",
+          "locale",
+          "timezone"
+        ]
+      },
+      "UpdateProfilePreferencesDto": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "locale": {
+            "type": "string",
+            "maxLength": 35,
+            "example": "en-US"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Africa/Addis_Ababa"
+          },
+          "timeFormat": {
+            "type": "string",
+            "enum": [
+              "H12",
+              "H24"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "locale",
+          "timezone",
+          "timeFormat"
+        ]
+      },
+      "UpdateNotificationPreferencesDto": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Use 0 when creating preferences for the first time."
+          },
+          "quietHoursStart": {
+            "type": "object",
+            "nullable": true,
+            "example": "22:00"
+          },
+          "quietHoursEnd": {
+            "type": "object",
+            "nullable": true,
+            "example": "07:00"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "lockScreenPrivacy": {
+            "type": "string",
+            "enum": [
+              "FULL",
+              "TITLE_ONLY",
+              "PRIVATE"
+            ]
+          },
+          "globallyPaused": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ]
+      },
+      "ReportNotificationAttemptDto": {
+        "type": "object",
+        "properties": {
+          "occurrenceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deviceInstallationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scheduleRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "effectiveScheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nudgeStep": {
+            "type": "number",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "LOCALLY_SCHEDULED",
+              "SCHEDULING_FAILED",
+              "CANCELLED",
+              "OPENED",
+              "ACTED_ON"
+            ]
+          },
+          "osNotificationId": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "errorCode": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Sanitized stable error code; never raw error text."
+          }
+        },
+        "required": [
+          "occurrenceId",
+          "deviceInstallationId",
+          "scheduleRevision",
+          "effectiveScheduledAt",
+          "nudgeStep",
+          "outcome"
+        ]
+      }
+    }
+  }
+}
