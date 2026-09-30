@@ -1,6 +1,6 @@
 # Smart Reminder API
 
-NestJS authentication foundation for the Smart Reminder mobile MVP.
+NestJS/PostgreSQL backend for the Smart Reminder mobile MVP.
 
 ## Included
 
@@ -21,6 +21,12 @@ NestJS authentication foundation for the Smart Reminder mobile MVP.
 - Swagger documentation in non-production environments when enabled
 - Liveness and PostgreSQL readiness endpoints
 - Unit tests for configuration, Argon2id, token signing, refresh rotation, and reuse detection
+- Timezone-safe reminder creation, recurrence materialization, and optimistic schedule revisions
+- Idempotent complete, skip, snooze, reschedule, content-edit, and reminder-deletion actions
+- Upcoming, overdue, completed, and combined occurrence views with cursor pagination
+- Immutable reminder event history and deterministic occurrence explanations
+- Bounded nudge policies, device installations, notification preferences, and local outcome reporting
+- Checked-in generated OpenAPI contract at `docs/openapi.json`
 
 This MVP server intentionally has no Redis, BullMQ worker, FCM, or APNs dependency. Reminder delivery is scheduled locally by the mobile application.
 
@@ -97,7 +103,18 @@ The default endpoints are:
 
 The mobile app should implement [the mobile authentication contract](../docs/MOBILE_AUTH_CONTRACT.md). A refresh response replaces the previous refresh token; clients must persist the replacement atomically and never reuse the consumed token.
 
-The export format is JSON with `format: "smart-reminder-export"` and `version: 1`. It currently contains the account record and an empty `reminders` array because reminder persistence is the next server module. That array must be populated before reminders can exist in production.
+The export format is JSON with `format: "smart-reminder-export"` and `version: 1`. It includes account settings, device installations, reminders, schedule revisions, occurrences, immutable events, nudge policies, and reported local-notification outcomes.
+
+## Reminder and notification resource groups
+
+- `/v1/reminders` — preview, create, read, content edit, schedule edit, nudge policy, events, and delete
+- `/v1/reminder-occurrences` — filtered lists, deterministic explanation, snooze, complete, and skip
+- `/v1/device-installations` — installation registration/reconciliation and revocation
+- `/v1/notification-preferences` — quiet hours, timezone, lock-screen privacy, and global pause
+- `/v1/notification-attempts` — idempotent mobile reports for requested, locally scheduled, failed, cancelled, opened, and acted-on states
+
+The exact request and response schema is generated in `docs/openapi.json`; regenerate it after controller or DTO changes with `pnpm openapi:generate`.
+Backend requirement coverage and remaining release evidence are tracked in `docs/MVP_BACKEND_STATUS.md`.
 
 ## Verification
 
@@ -107,6 +124,7 @@ pnpm exec prisma validate
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm openapi:generate
 ```
 
 Database-backed endpoint verification additionally requires a running PostgreSQL instance and an applied migration.
@@ -115,6 +133,6 @@ Database-backed endpoint verification additionally requires a running PostgreSQL
 
 - Run the migrations and endpoint integration suite against PostgreSQL.
 - Verify SMTP delivery and mobile deep links with the selected provider.
-- Populate exports and account-deletion cancellation with reminder records when the reminder module is introduced.
 - Configure the database provider's expired-backup deletion policy to 90 days or less.
 - Use a shared throttler store before running more than one API replica; the MVP single-process configuration uses in-memory counters.
+- Run reminder/account purge jobs through a durable external scheduler and monitor failures before scaling beyond one API process.
