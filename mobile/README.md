@@ -20,10 +20,15 @@ core reminder creation and time-management flow.
 - Manual one-time, daily, weekly, and selected-weekday reminder creation
 - Native date/time selection, optional series end date or occurrence count, and pre-save civil-time preview
 - Upcoming/overdue occurrence lists with timezone-aware formatting and pull-to-refresh
+- One UI-inspired reminder dashboard with Today, Scheduled, Overdue, and Completed views
+- Reminder detail editing, completion, skipping, snoozing, deletion, history, and “Why now?” context
 - One-occurrence or future-series rescheduling with optimistic concurrency
 - 10-minute, 30-minute, and one-hour occurrence snooze actions
+- Server-backed notification pause, quiet-hour, lock-screen privacy, and device controls
+- Optional bounded follow-up nudges with local schedule reconciliation on app resume
+- Complete and 10-minute snooze actions directly from interactive notifications
 - Read-only account-timezone impact preview before changing display preferences
-- Local notification scheduling and reminder deep links in development/production builds
+- Local notification scheduling and reminder deep links in Expo Go and app builds
 
 The server remains authoritative. Mobile responses are schema-validated before entering UI state, and all mutation failures are presented through the app toast layer.
 
@@ -58,18 +63,17 @@ npm start
 ### Android notification testing
 
 Authentication, onboarding, and server-backed reminder screens can run in Expo Go. On Android,
-Smart Reminder treats the notification runtime as unavailable in Expo Go to
-avoid loading Expo's unsupported push-token registration path. Reminder creation
-still succeeds there, but device notification scheduling reports that a development
-build is required. Use the app's development build to verify real scheduling,
-permission behavior, foreground presentation, and notification deep links:
+local notification permission and scheduling remain available in Expo Go. Android
+remote push delivery requires a development build. Use the app's development build
+to verify the full native path, including notification action buttons, foreground
+presentation, deep links, and exact-alarm behavior:
 
 ```bash
 npx expo run:android
 ```
 
-The production app and development build continue to use the operating-system
-notification permission and settings state.
+The app reconciles the operating-system permission, registered device, and pending
+local schedules at startup and whenever it returns to the foreground.
 
 Use a physical Android and iOS device for final permission and system-settings verification.
 

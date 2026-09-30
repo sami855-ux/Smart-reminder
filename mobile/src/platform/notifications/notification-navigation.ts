@@ -59,15 +59,26 @@ export function useNotificationNavigation(): void {
         return;
       }
 
+      const isCompleteAction = response.actionIdentifier === COMPLETE_NOTIFICATION_ACTION;
+      const isSnoozeAction = response.actionIdentifier === SNOOZE_NOTIFICATION_ACTION;
+      if (!isCompleteAction && !isSnoozeAction) {
+        if (active && route) router.push(route);
+        return;
+      }
+
       try {
-        if (response.actionIdentifier === COMPLETE_NOTIFICATION_ACTION) {
+        // ACTED_ON records the notification interaction itself. It is sent
+        // before snooze changes the occurrence timestamp used to identify the
+        // original notification attempt.
+        await reportOutcome(payload, 'ACTED_ON');
+        if (isCompleteAction) {
           await completeOccurrence({
             occurrenceId: payload.occurrenceId,
             expectedScheduleRevision: payload.scheduleRevision,
             expectedEffectiveScheduledAt: payload.effectiveScheduledAt,
             idempotencyKey: notificationActionKey('complete', payload),
           });
-        } else if (response.actionIdentifier === SNOOZE_NOTIFICATION_ACTION) {
+        } else if (isSnoozeAction) {
           await snoozeOccurrence({
             occurrenceId: payload.occurrenceId,
             expectedScheduleRevision: payload.scheduleRevision,
@@ -75,12 +86,8 @@ export function useNotificationNavigation(): void {
             until: new Date(Date.now() + 10 * 60_000).toISOString(),
             idempotencyKey: notificationActionKey('snooze', payload),
           });
-        } else {
-          if (active && route) router.push(route);
-          return;
         }
 
-        await reportOutcome(payload, 'ACTED_ON');
         const reminder = await getReminder(payload.reminderId);
         await scheduleReminderNotifications(reminder);
         await Promise.all([
@@ -91,11 +98,9 @@ export function useNotificationNavigation(): void {
         if (!active) return;
         showToast({
           title:
-            response.actionIdentifier === COMPLETE_NOTIFICATION_ACTION
-              ? 'Reminder completed'
-              : 'Reminder snoozed',
+            isCompleteAction ? 'Reminder completed' : 'Reminder snoozed',
           message:
-            response.actionIdentifier === COMPLETE_NOTIFICATION_ACTION
+            isCompleteAction
               ? 'The reminder was completed from the notification.'
               : 'The reminder will alert you again in 10 minutes.',
           tone: 'success',
