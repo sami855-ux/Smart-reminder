@@ -1,0 +1,63 @@
+name: Server CI
+
+on:
+  pull_request:
+    paths:
+      - "server/**"
+      - ".github/workflows/server-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/server-ci.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: smart_reminder_test
+          POSTGRES_USER: smart_reminder
+          POSTGRES_PASSWORD: smart_reminder
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smart_reminder -d smart_reminder_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: server
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://smart_reminder:smart_reminder@127.0.0.1:5432/smart_reminder_test
+      AUTH_AUDIT_PEPPER: ci-only-auth-audit-pepper-with-32-characters
+      AUTH_PUBLIC_APP_URL: http://localhost:8081
+      SWAGGER_ENABLED: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.5
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Generate ephemeral CI signing keys
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/ci-jwt-private.pem
+          openssl rsa -pubout -in /tmp/ci-jwt-private.pem -out /tmp/ci-jwt-public.pem
+          echo "JWT_ACCESS_PRIVATE_KEY_BASE64=$(base64 -w 0 /tmp/ci-jwt-private.pem)" >> "$GITHUB_ENV"
+          echo "JWT_ACCESS_PUBLIC_KEY_BASE64=$(base64 -w 0 /tmp/ci-jwt-public.pem)" >> "$GITHUB_ENV"
+      - run: pnpm exec prisma validate
+      - run: pnpm db:deploy
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm openapi:check
