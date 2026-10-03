@@ -15,13 +15,13 @@ export function OneUIHeader({
   action?: ReactNode;
 }) {
   return (
-    <View className="px-5 pb-4 pt-1">
+    <View className="px-5 pb-3 pt-1">
       <View className="min-h-12 flex-row items-center justify-between">
         {onBack ? (
           <Pressable
             accessibilityLabel="Go back"
             accessibilityRole="button"
-            className="size-12 items-center justify-center rounded-full active:bg-secondary-fill"
+            className="size-12 items-center justify-center rounded-[14px] active:bg-secondary-fill"
             hitSlop={8}
             onPress={onBack}
           >
@@ -34,12 +34,12 @@ export function OneUIHeader({
       </View>
       <Text
         accessibilityRole="header"
-        className="mt-5 text-[38px] font-bold leading-[44px] tracking-[-1.2px] text-ink"
+        className="mt-4 font-inter-bold text-[32px] leading-[38px] text-foreground"
       >
         {title}
       </Text>
       {subtitle ? (
-        <Text className="mt-2 text-[15px] leading-6 text-muted-ink">{subtitle}</Text>
+        <Text className="mt-2 font-inter text-[15px] leading-6 text-muted-foreground">{subtitle}</Text>
       ) : null}
     </View>
   );

@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requestWithAccessToken } from '../api/client';
 import { toApiError } from '../api/errors';
 
+export const notificationPreferencesQueryKey = ['notification-preferences'] as const;
+
 export const profilePreferencesSchema = z
   .object({
     userId: z.uuid(),

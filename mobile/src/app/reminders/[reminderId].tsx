@@ -1,15 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { Slider as NativeSlider } from '@expo/ui/community/slider';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
-  Switch,
   Text,
   View,
 } from 'react-native';
@@ -17,8 +14,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../auth/AuthProvider';
 import { formErrorMessage } from '../../auth/form-error';
+import { AlertDialog } from '../../components/ui/AlertDialog';
+import { AppleSwitch } from '../../components/ui/AppleSwitch';
+import { AuthIcon, type AuthIconName } from '../../components/ui/AuthIcon';
 import { Button } from '../../components/ui/Button';
+import { DateTimePickerSheet } from '../../components/ui/DateTimePickerSheet';
 import { OneUIHeader } from '../../components/ui/OneUIHeader';
+import { DetailSkeleton } from '../../components/ui/Skeleton';
 import { SymbolIcon, type SymbolName } from '../../components/ui/SymbolIcon';
 import { TextField } from '../../components/ui/TextField';
 import { useToast } from '../../components/ui/ToastProvider';
@@ -42,7 +44,9 @@ import {
   updateNudgePolicy,
   updateReminderContent,
 } from '../../reminders/reminder.api';
+import { reminderCachePolicy, reminderQueryKeys } from '../../reminders/reminder.queries';
 import type { ReminderDetail } from '../../reminders/reminder.schemas';
+import { useAppTheme } from '../../theme/theme-context';
 
 type EditScope = 'THIS_OCCURRENCE' | 'THIS_AND_FUTURE';
 type PickerMode = 'date' | 'time' | null;
@@ -58,11 +62,13 @@ export default function ReminderDetailScreen() {
   const [now] = useState(Date.now);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [editContentOpen, setEditContentOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const detail = useQuery({
-    queryKey: ['reminder', params.reminderId],
+    queryKey: reminderQueryKeys.detail(params.reminderId),
     queryFn: () => getReminder(params.reminderId),
     enabled: status === 'authenticated' && Boolean(params.reminderId),
+    ...reminderCachePolicy,
   });
   const selected = useMemo(() => {
     const items = detail.data?.occurrences ?? [];
@@ -73,28 +79,31 @@ export default function ReminderDetailScreen() {
     );
   }, [detail.data?.occurrences, params.occurrenceId]);
   const explanation = useQuery({
-    queryKey: ['occurrence-explanation', selected?.id],
+    queryKey: reminderQueryKeys.explanation(selected?.id ?? 'unselected'),
     queryFn: () => getOccurrenceExplanation(selected!.id),
     enabled: Boolean(selected?.id),
+    ...reminderCachePolicy,
   });
   const nudge = useQuery({
-    queryKey: ['nudge-policy', params.reminderId],
+    queryKey: reminderQueryKeys.nudgePolicy(params.reminderId),
     queryFn: () => getNudgePolicy(params.reminderId),
     enabled: Boolean(params.reminderId) && detail.data?.lifecycle === 'ACTIVE',
+    ...reminderCachePolicy,
   });
   const history = useQuery({
-    queryKey: ['reminder-events', params.reminderId],
+    queryKey: reminderQueryKeys.events(params.reminderId),
     queryFn: () => listReminderEvents(params.reminderId, 8),
     enabled: Boolean(params.reminderId),
+    ...reminderCachePolicy,
   });
 
   async function refreshReminderState() {
     const refreshed = await detail.refetch();
     if (refreshed.data) await scheduleReminderNotifications(refreshed.data);
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['reminder-occurrences'] }),
-      queryClient.invalidateQueries({ queryKey: ['reminder-events', params.reminderId] }),
-      queryClient.invalidateQueries({ queryKey: ['occurrence-explanation'] }),
+      queryClient.invalidateQueries({ queryKey: reminderQueryKeys.occurrenceLists() }),
+      queryClient.invalidateQueries({ queryKey: reminderQueryKeys.events(params.reminderId) }),
+      queryClient.invalidateQueries({ queryKey: reminderQueryKeys.explanations() }),
     ]);
   }
 
@@ -163,7 +172,7 @@ export default function ReminderDetailScreen() {
       await cancelReminderNotifications(snapshot);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['reminder-occurrences'] });
+      await queryClient.invalidateQueries({ queryKey: reminderQueryKeys.occurrenceLists() });
       showToast({
         title: 'Reminder deleted',
         message: 'Its pending device alerts were cancelled.',
@@ -199,28 +208,11 @@ export default function ReminderDetailScreen() {
 
   if (status !== 'authenticated') return <Redirect href="/" />;
 
-  function confirmDelete() {
-    Alert.alert(
-      'Delete this reminder?',
-      'The reminder will be cancelled now and permanently purged after the retention period.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteMutation.mutate(),
-        },
-      ],
-    );
-  }
-
   return (
     <>
       <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
         {detail.isPending ? (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator color="#2764E7" />
-          </View>
+          <DetailSkeleton />
         ) : detail.isError || !detail.data || !selected ? (
           <View className="flex-1">
             <OneUIHeader onBack={() => router.back()} title="Reminder" />
@@ -273,14 +265,30 @@ export default function ReminderDetailScreen() {
                   />
                 ) : null}
 
+                <SectionTitle title="Occurrences" />
+                <OccurrenceTimeline
+                  locale={state.preferences.locale}
+                  now={now}
+                  occurrences={detail.data.occurrences}
+                  selectedId={selected.id}
+                  timeFormat={state.preferences.timeFormat}
+                  timezone={detail.data.schedule.timezone}
+                  onSelect={(occurrenceId) => router.setParams({ occurrenceId })}
+                />
+
                 <SectionTitle title="Details" />
-                <View className="overflow-hidden rounded-[24px] bg-paper">
+                <View className="overflow-hidden rounded-[18px] bg-paper">
                   <DetailRow icon="repeat" label="Repeats" value={recurrenceLabel(detail.data)} />
                   <Divider />
                   <DetailRow
                     icon="clock"
                     label="Local schedule"
-                    value={`${selected.localDate} · ${selected.localTime}`}
+                    value={formatLocalSchedule(
+                      selected.localDate,
+                      selected.localTime,
+                      state.preferences.locale,
+                      state.preferences.timeFormat,
+                    )}
                   />
                   <Divider />
                   <DetailRow icon="calendar" label="Timezone" value={detail.data.schedule.timezone} />
@@ -289,16 +297,16 @@ export default function ReminderDetailScreen() {
                 {explanation.data ? (
                   <>
                     <SectionTitle title="Why now?" />
-                    <View className="rounded-[24px] bg-intelligence-soft p-5">
+                    <View className="rounded-[16px] bg-intelligence-soft p-5">
                       <View className="flex-row items-start">
                         <View className="size-10 items-center justify-center rounded-full bg-white">
-                          <SymbolIcon className="text-intelligence" name="sparkle" size={20} />
+                          <SymbolIcon className="text-accent" name="sparkle" size={20} />
                         </View>
                         <View className="ml-3 flex-1">
-                          <Text className="text-[16px] font-semibold text-ink">
+                          <Text className="text-[16px] font-inter-semibold text-foreground">
                             Schedule explanation
                           </Text>
-                          <Text className="mt-1.5 text-[14px] leading-6 text-muted-ink">
+                          <Text className="font-inter mt-1.5 text-[14px] leading-6 text-muted-foreground">
                             {explanation.data.reason}
                           </Text>
                         </View>
@@ -310,66 +318,30 @@ export default function ReminderDetailScreen() {
                 {detail.data.lifecycle === 'ACTIVE' ? (
                   <>
                     <SectionTitle title="Follow-up nudge" />
-                    <View className="rounded-[24px] bg-paper p-4">
-                      <View className="min-h-14 flex-row items-center">
-                        <View className="flex-1 pr-4">
-                          <Text className="text-[16px] font-semibold text-ink">Nudge me again</Text>
-                          <Text className="mt-1 text-[13px] leading-5 text-muted-ink">
-                            One bounded follow-up if this reminder remains open.
-                          </Text>
-                        </View>
-                        <Switch
-                          accessibilityLabel="Enable follow-up nudge"
-                          disabled={nudgeMutation.isPending || nudge.isPending}
-                          onValueChange={(enabled) =>
-                            nudgeMutation.mutate({
-                              enabled,
-                              ...(enabled ? { intervalMinutes: nudge.data?.intervalMinutes ?? 30 } : {}),
-                            })
-                          }
-                          thumbColor="#FFFFFF"
-                          trackColor={{ false: '#DADCE2', true: '#2764E7' }}
-                          value={nudge.data?.enabled ?? false}
-                        />
-                      </View>
-                      {nudge.data?.enabled ? (
-                        <View className="mt-3 flex-row gap-2 border-t border-taupe/70 pt-4">
-                          {[15, 30, 60].map((minutes) => (
-                            <Pressable
-                              key={minutes}
-                              accessibilityRole="radio"
-                              accessibilityState={{ selected: nudge.data?.intervalMinutes === minutes }}
-                              className={cn(
-                                'min-h-11 flex-1 items-center justify-center rounded-full',
-                                nudge.data?.intervalMinutes === minutes
-                                  ? 'bg-intelligence'
-                                  : 'bg-secondary-fill',
-                              )}
-                              disabled={nudgeMutation.isPending}
-                              onPress={() =>
-                                nudgeMutation.mutate({ enabled: true, intervalMinutes: minutes })
-                              }
-                            >
-                              <Text
-                                className={cn(
-                                  'text-[13px] font-semibold',
-                                  nudge.data?.intervalMinutes === minutes ? 'text-white' : 'text-ink',
-                                )}
-                              >
-                                {minutes === 60 ? '1 hour' : `${minutes} min`}
-                              </Text>
-                            </Pressable>
-                          ))}
-                        </View>
-                      ) : null}
-                    </View>
+                    <NudgeControl
+                      key={`nudge-${nudge.data?.enabled}-${nudge.data?.intervalMinutes}`}
+                      disabled={nudgeMutation.isPending || nudge.isPending}
+                      enabled={nudge.data?.enabled ?? false}
+                      intervalMinutes={nudge.data?.intervalMinutes ?? 30}
+                      onSave={(intervalMinutes) =>
+                        nudgeMutation.mutate({ enabled: true, intervalMinutes })
+                      }
+                      onToggle={(enabled) =>
+                        nudgeMutation.mutate({
+                          enabled,
+                          ...(enabled
+                            ? { intervalMinutes: nudge.data?.intervalMinutes ?? 30 }
+                            : {}),
+                        })
+                      }
+                    />
                   </>
                 ) : null}
 
                 {history.data?.items.length ? (
                   <>
                     <SectionTitle title="Activity" />
-                    <View className="overflow-hidden rounded-[24px] bg-paper">
+                    <View className="overflow-hidden rounded-[18px] bg-paper">
                       {history.data.items.map((event, index) => (
                         <View key={event.id}>
                           {index > 0 ? <Divider inset /> : null}
@@ -378,10 +350,10 @@ export default function ReminderDetailScreen() {
                               <SymbolIcon name="history" size={18} />
                             </View>
                             <View className="ml-3 flex-1">
-                              <Text className="text-[14px] font-semibold text-ink">
+                              <Text className="text-[14px] font-inter-semibold text-foreground">
                                 {eventLabel(event.type)}
                               </Text>
-                              <Text className="mt-1 text-[12px] text-muted-ink">
+                              <Text className="font-inter mt-1 text-[12px] text-muted-foreground">
                                 {formatHistoryTime(event.createdAt, state.preferences.locale)}
                               </Text>
                             </View>
@@ -394,16 +366,16 @@ export default function ReminderDetailScreen() {
 
                 <Pressable
                   accessibilityRole="button"
-                  className="mt-8 min-h-14 flex-row items-center justify-center rounded-[20px] bg-urgent-soft active:opacity-75"
+                  className="mt-8 min-h-14 flex-row items-center justify-center rounded-[16px] bg-urgent-soft active:opacity-75"
                   disabled={deleteMutation.isPending}
-                  onPress={confirmDelete}
+                  onPress={() => setDeleteDialogOpen(true)}
                 >
                   {deleteMutation.isPending ? (
-                    <ActivityIndicator color="#D63B32" />
+                    <ActivityIndicator color="#B94A42" />
                   ) : (
                     <>
-                      <SymbolIcon className="text-urgent" name="delete" size={22} />
-                      <Text className="ml-2 text-[15px] font-semibold text-urgent">Delete reminder</Text>
+                      <AuthIcon color="#B94A42" name="trash" size={20} />
+                      <Text className="ml-2 text-[15px] font-inter-semibold text-urgent">Delete reminder</Text>
                     </>
                   )}
                 </Pressable>
@@ -437,6 +409,17 @@ export default function ReminderDetailScreen() {
           showToast={showToast}
         />
       ) : null}
+
+      <AlertDialog
+        confirmLabel="Delete reminder"
+        loading={deleteMutation.isPending}
+        message="The reminder will be cancelled now and permanently purged after the retention period."
+        title="Delete this reminder?"
+        tone="destructive"
+        visible={deleteDialogOpen}
+        onCancel={() => setDeleteDialogOpen(false)}
+        onConfirm={() => deleteMutation.mutate()}
+      />
     </>
   );
 }
@@ -455,38 +438,57 @@ function ReminderHero({
   timeFormat: '12-hour' | '24-hour';
 }) {
   const terminal = occurrence.lifecycle === 'COMPLETED' || occurrence.lifecycle === 'SKIPPED';
+  const due =
+    occurrence.lifecycle === 'SCHEDULED' &&
+    new Date(occurrence.effectiveScheduledAt).getTime() <= now;
   return (
-    <View className="rounded-[28px] bg-paper p-5">
-      <View className="flex-row items-start">
+    <View className="overflow-hidden rounded-[22px] bg-ink p-5">
+      <View className="flex-row items-center justify-between">
         <View
           className={cn(
-            'size-14 items-center justify-center rounded-[20px]',
-            terminal ? 'bg-completed-soft' : 'bg-intelligence-soft',
+            'rounded-full px-3 py-1.5',
+            terminal ? 'bg-white' : due ? 'bg-kast-lime' : 'bg-secondary-fill',
           )}
         >
-          <SymbolIcon
-            className={terminal ? 'text-completed' : 'text-intelligence'}
-            name={terminal ? 'check' : 'notification'}
-            size={24}
-          />
-        </View>
-        <View className="ml-4 flex-1">
-          <Text className="text-[12px] font-bold tracking-[1.1px] text-subtle-ink">
+          <Text
+            className={cn(
+              'font-inter-bold text-[11px]',
+              terminal || due ? 'text-ink' : 'text-foreground',
+            )}
+          >
             {statusLabel(occurrence, now)}
           </Text>
-          <Text className="mt-2 text-[27px] font-bold leading-[33px] tracking-[-0.6px] text-ink">
-            {detail.title}
-          </Text>
-          {detail.contextNote ? (
-            <Text className="mt-2 text-[14px] leading-6 text-muted-ink">{detail.contextNote}</Text>
-          ) : null}
+        </View>
+        <View className="size-10 items-center justify-center rounded-[12px] bg-white/10">
+          <SymbolIcon
+            className={terminal ? 'text-white' : 'text-kast-lime'}
+            name={terminal ? 'check' : 'notification'}
+            size={20}
+          />
         </View>
       </View>
-      <View className="mt-5 border-t border-taupe/70 pt-4">
-        <Text className="text-[16px] font-semibold text-ink">
-          {formatOccurrence(occurrence.effectiveScheduledAt, detail.schedule.timezone, locale, timeFormat)}
+      <Text className="mt-6 font-inter-bold text-[28px] leading-[34px] text-white">
+        {detail.title}
+      </Text>
+      {detail.contextNote ? (
+        <Text className="mt-2 font-inter text-[14px] leading-6 text-white/70">
+          {detail.contextNote}
         </Text>
-        <Text className="mt-1 text-[12px] text-muted-ink">{detail.schedule.timezone}</Text>
+      ) : null}
+      <View className="mt-6 border-t border-white/15 pt-4">
+        <View className="flex-row items-center">
+          <View className="size-9 items-center justify-center rounded-[11px] bg-white/10">
+            <SymbolIcon className="text-kast-lime" name="calendar" size={17} />
+          </View>
+          <View className="ml-3 flex-1">
+            <Text className="font-inter-semibold text-[16px] text-white">
+              {formatOccurrence(occurrence.effectiveScheduledAt, detail.schedule.timezone, locale, timeFormat)}
+            </Text>
+            <Text className="mt-1 font-inter text-[12px] text-white/60">
+              {detail.schedule.timezone}
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -510,13 +512,62 @@ function ActionGrid({
   onSkip: () => void;
 }) {
   return (
-    <View className="mt-4 flex-row flex-wrap gap-3">
+    <View className="mt-6">
+      <Text className="mb-2 ml-3 font-inter-semibold text-[12px] text-muted-foreground">
+        QUICK ACTIONS
+      </Text>
       {canComplete ? (
-        <ActionButton icon="check" label="Complete" primary disabled={busy} onPress={onComplete} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
+          className={cn(
+            'min-h-[68px] flex-row items-center rounded-[18px] bg-kast-lime px-4',
+            busy && 'opacity-50',
+          )}
+          disabled={busy}
+          onPress={onComplete}
+        >
+          <View className="size-10 items-center justify-center rounded-full bg-ink/10">
+            <AuthIcon color="#121510" name="check" size={21} />
+          </View>
+          <View className="ml-3 flex-1">
+            <Text className="font-inter-bold text-[15px] text-ink">Complete reminder</Text>
+            <Text className="mt-0.5 font-inter text-[12px] text-ink/65">
+              Mark this occurrence as done
+            </Text>
+          </View>
+          <AuthIcon color="#121510" name="arrow-right" size={19} />
+        </Pressable>
       ) : null}
-      <ActionButton icon="clock" label="Snooze 10m" disabled={busy} onPress={onSnooze} />
-      <ActionButton icon="calendar" label="Reschedule" disabled={busy} onPress={onReschedule} />
-      {recurring ? <ActionButton icon="chevron" label="Skip" disabled={busy} onPress={onSkip} /> : null}
+      <View className={cn('overflow-hidden rounded-[18px] bg-paper', canComplete && 'mt-3')}>
+        <ActionButton
+          description="Move this occurrence 10 minutes later"
+          icon="snooze"
+          label="Snooze for 10 minutes"
+          disabled={busy}
+          onPress={onSnooze}
+        />
+        <Divider />
+        <ActionButton
+          description="Choose a new date or time"
+          icon="calendar"
+          label="Reschedule"
+          disabled={busy}
+          onPress={onReschedule}
+        />
+        {recurring ? (
+          <>
+            <Divider />
+            <ActionButton
+              description="Leave the rest of the series unchanged"
+              icon="skip-forward"
+              label="Skip this occurrence"
+              disabled={busy}
+              onPress={onSkip}
+            />
+          </>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -524,33 +575,263 @@ function ActionGrid({
 function ActionButton({
   icon,
   label,
-  primary = false,
+  description,
   disabled,
   onPress,
 }: {
-  icon: SymbolName;
+  icon: AuthIconName;
   label: string;
-  primary?: boolean;
+  description: string;
   disabled: boolean;
   onPress: () => void;
 }) {
+  const { colors } = useAppTheme();
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       className={cn(
-        'min-h-[56px] min-w-[46%] flex-1 flex-row items-center justify-center rounded-[20px] px-3',
-        primary ? 'bg-intelligence' : 'bg-paper',
+        'min-h-[76px] flex-row items-center px-4 py-3 active:bg-secondary-fill',
         disabled && 'opacity-50',
       )}
       disabled={disabled}
       onPress={onPress}
     >
-      <SymbolIcon className={primary ? 'text-white' : 'text-ink'} name={icon} size={19} />
-      <Text className={cn('ml-2 text-[14px] font-semibold', primary ? 'text-white' : 'text-ink')}>
-        {label}
-      </Text>
+      <View className="size-10 items-center justify-center rounded-[12px] bg-secondary-fill">
+        <AuthIcon color={colors.accent} name={icon} size={20} />
+      </View>
+      <View className="ml-3 flex-1 pr-3">
+        <Text className="font-inter-semibold text-[15px] text-foreground">{label}</Text>
+        <Text className="mt-1 font-inter text-[12px] leading-4 text-muted-foreground">
+          {description}
+        </Text>
+      </View>
+      <SymbolIcon className="text-subtle-foreground" name="chevron" size={22} />
     </Pressable>
+  );
+}
+
+function OccurrenceTimeline({
+  occurrences,
+  selectedId,
+  locale,
+  timezone,
+  timeFormat,
+  now,
+  onSelect,
+}: {
+  occurrences: ReminderDetail['occurrences'];
+  selectedId: string;
+  locale: string;
+  timezone: string;
+  timeFormat: '12-hour' | '24-hour';
+  now: number;
+  onSelect: (occurrenceId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const scheduledCount = occurrences.filter((item) => item.lifecycle === 'SCHEDULED').length;
+  const finishedCount = occurrences.length - scheduledCount;
+  const selectedIndex = Math.max(
+    0,
+    occurrences.findIndex((item) => item.id === selectedId),
+  );
+  const windowStart = Math.max(
+    0,
+    Math.min(selectedIndex - 2, Math.max(0, occurrences.length - 5)),
+  );
+  const visibleOccurrences =
+    expanded || occurrences.length <= 5
+      ? occurrences
+      : occurrences.slice(windowStart, windowStart + 5);
+
+  return (
+    <View className="overflow-hidden rounded-[18px] bg-paper">
+      <View className="flex-row items-center px-4 py-4">
+        <View className="size-10 items-center justify-center rounded-[12px] bg-intelligence-soft">
+          <SymbolIcon className="text-accent" name="repeat" size={20} />
+        </View>
+        <View className="ml-3 flex-1">
+          <Text className="font-inter-semibold text-[16px] text-foreground">Schedule timeline</Text>
+          <Text className="mt-1 font-inter text-[12px] tabular-nums text-muted-foreground">
+            {occurrences.length} total · {scheduledCount} scheduled · {finishedCount} finished
+          </Text>
+        </View>
+      </View>
+
+      <View className="h-px bg-secondary-fill" />
+
+      {visibleOccurrences.map((occurrence, index) => (
+        <View key={occurrence.id}>
+          {index > 0 ? <View className="ml-[76px] h-px bg-secondary-fill" /> : null}
+          <OccurrenceRow
+            locale={locale}
+            now={now}
+            occurrence={occurrence}
+            selected={occurrence.id === selectedId}
+            timeFormat={timeFormat}
+            timezone={timezone}
+            onPress={() => onSelect(occurrence.id)}
+          />
+        </View>
+      ))}
+
+      {occurrences.length > 5 ? (
+        <>
+          <View className="h-px bg-secondary-fill" />
+          <Pressable
+            accessibilityRole="button"
+            className="min-h-12 items-center justify-center active:bg-canvas"
+            onPress={() => setExpanded((current) => !current)}
+          >
+            <Text className="font-inter-semibold text-[13px] text-accent">
+              {expanded ? 'Show fewer occurrences' : `View all ${occurrences.length} occurrences`}
+            </Text>
+          </Pressable>
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+function OccurrenceRow({
+  occurrence,
+  selected,
+  locale,
+  timezone,
+  timeFormat,
+  now,
+  onPress,
+}: {
+  occurrence: ReminderDetail['occurrences'][number];
+  selected: boolean;
+  locale: string;
+  timezone: string;
+  timeFormat: '12-hour' | '24-hour';
+  now: number;
+  onPress: () => void;
+}) {
+  const status = occurrenceTimelineStatus(occurrence, now);
+  const date = new Date(occurrence.effectiveScheduledAt);
+
+  return (
+    <Pressable
+      accessibilityHint="Shows the details and actions for this occurrence"
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      className={cn(
+        'min-h-[76px] flex-row items-center px-4 py-3 active:bg-canvas',
+        selected && 'bg-intelligence-soft',
+      )}
+      onPress={onPress}
+    >
+      <View className="w-11 items-center">
+        <Text className="font-inter-semibold text-[10px] text-muted-foreground">
+          {formatOccurrenceMonth(date, locale, timezone)}
+        </Text>
+        <Text className="mt-0.5 font-display-semibold text-[22px] tabular-nums text-foreground">
+          {formatOccurrenceDay(date, locale, timezone)}
+        </Text>
+      </View>
+      <View className="mx-4 h-10 w-px bg-taupe" />
+      <View className="flex-1">
+        <Text className="font-inter-semibold text-[14px] text-foreground">
+          Occurrence {occurrence.sequence}
+        </Text>
+        <Text className="mt-1 font-inter text-[12px] tabular-nums text-muted-foreground">
+          {formatOccurrenceWeekdayTime(date, locale, timezone, timeFormat)}
+        </Text>
+      </View>
+      <View className={cn('rounded-full px-2.5 py-1', occurrenceStatusTone(status))}>
+        <Text className={cn('font-inter-semibold text-[10px]', occurrenceStatusTextTone(status))}>
+          {status}
+        </Text>
+      </View>
+      {selected ? (
+        <View className="ml-2 size-6 items-center justify-center rounded-full bg-ink">
+          <SymbolIcon className="text-kast-lime" name="check" size={14} />
+        </View>
+      ) : (
+        <SymbolIcon className="ml-1 text-subtle-foreground" name="chevron" size={22} />
+      )}
+    </Pressable>
+  );
+}
+
+function NudgeControl({
+  enabled,
+  intervalMinutes,
+  disabled,
+  onToggle,
+  onSave,
+}: {
+  enabled: boolean;
+  intervalMinutes: number;
+  disabled: boolean;
+  onToggle: (enabled: boolean) => void;
+  onSave: (intervalMinutes: number) => void;
+}) {
+  const { colors, isDark } = useAppTheme();
+  const [draftMinutes, setDraftMinutes] = useState(intervalMinutes);
+
+  return (
+    <View className="rounded-[18px] bg-paper p-4">
+      <View className="min-h-14 flex-row items-center">
+        <View className="flex-1 pr-4">
+          <Text className="font-inter-semibold text-[16px] text-foreground">Nudge me again</Text>
+          <Text className="mt-1 font-inter text-[13px] leading-5 text-muted-foreground">
+            Send one follow-up while this reminder is still open.
+          </Text>
+        </View>
+        <AppleSwitch
+          disabled={disabled}
+          label="Enable follow-up nudge"
+          value={enabled}
+          onValueChange={onToggle}
+        />
+      </View>
+
+      {enabled ? (
+        <View className="mt-4 border-t border-secondary-fill pt-4">
+          <View className="flex-row items-end justify-between">
+            <View>
+              <Text className="font-inter-medium text-[11px] text-muted-foreground">FOLLOW UP AFTER</Text>
+              <Text className="mt-1 font-inter-bold text-[24px] text-foreground">
+                {draftMinutes === 60 ? '1 hour' : `${draftMinutes} min`}
+              </Text>
+            </View>
+            {draftMinutes !== intervalMinutes ? (
+              <Pressable
+                accessibilityRole="button"
+                className="min-h-10 items-center justify-center rounded-full bg-ink px-4"
+                disabled={disabled}
+                onPress={() => onSave(draftMinutes)}
+              >
+                <Text className="font-inter-semibold text-[13px] text-white">Apply</Text>
+              </Pressable>
+            ) : (
+              <Text className="pb-2 font-inter-medium text-[12px] text-muted-foreground">Saved</Text>
+            )}
+          </View>
+          <NativeSlider
+            disabled={disabled}
+            maximumTrackTintColor={isDark ? '#2A2E28' : '#E7E9E2'}
+            maximumValue={60}
+            minimumTrackTintColor={colors.accent}
+            minimumValue={15}
+            step={15}
+            style={{ width: '100%', height: 44 }}
+            thumbTintColor={colors.paper}
+            value={draftMinutes}
+            onValueChange={(value) => setDraftMinutes(Math.round(value / 15) * 15)}
+          />
+          <View className="flex-row justify-between px-1">
+            <Text className="font-inter text-[11px] text-subtle-foreground">15 min</Text>
+            <Text className="font-inter text-[11px] text-subtle-foreground">1 hour</Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -628,12 +909,14 @@ function RescheduleModal({
   onSaved: () => Promise<void>;
   showToast: ReturnType<typeof useToast>['showToast'];
 }) {
+  const { state } = useOnboarding();
   const recurring = detail.schedule.type !== 'ONE_TIME';
   const [scope, setScope] = useState<EditScope>('THIS_OCCURRENCE');
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [dateTime, setDateTime] = useState(() =>
     fromLocalParts(occurrence.localDate, occurrence.localTime),
   );
+  const [pickerDraft, setPickerDraft] = useState(dateTime);
   const key = useRef(createIdempotencyKey('reschedule'));
   const mutation = useMutation({
     mutationFn: () =>
@@ -660,17 +943,20 @@ function RescheduleModal({
     onError: (error) => actionError(showToast, 'Couldn’t update the schedule', error),
   });
 
-  function onPickerChange(event: DateTimePickerEvent, selected?: Date) {
-    if (Platform.OS === 'android') setPickerMode(null);
-    if (event.type !== 'set' || !selected) return;
-    const next = new Date(dateTime);
-    if (pickerMode === 'date') {
-      next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
-    } else {
-      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-    }
-    setDateTime(next);
+  function openPicker(mode: Exclude<PickerMode, null>) {
+    setPickerDraft(dateTime);
+    setPickerMode(mode);
+  }
+
+  function applyPickerSelection() {
+    if (!pickerMode) return;
+    setDateTime(
+      pickerMode === 'date'
+        ? mergeDate(dateTime, pickerDraft)
+        : mergeTime(dateTime, pickerDraft),
+    );
     key.current = createIdempotencyKey('reschedule');
+    setPickerMode(null);
   }
 
   return (
@@ -701,36 +987,43 @@ function RescheduleModal({
             </View>
           ) : null}
 
-          <View className="mt-6 overflow-hidden rounded-[24px] bg-paper">
-            <DateRow label="Date" onPress={() => setPickerMode('date')} value={formatLocalDate(dateTime)} />
+          <View className="mt-6 overflow-hidden rounded-[18px] bg-paper">
+            <DateRow
+              icon="calendar"
+              label="Date"
+              onPress={() => openPicker('date')}
+              value={formatDisplayDate(dateTime, state.preferences.locale)}
+            />
             <Divider />
-            <DateRow label="Time" onPress={() => setPickerMode('time')} value={formatLocalTime(dateTime)} />
+            <DateRow
+              icon="clock"
+              label="Time"
+              onPress={() => openPicker('time')}
+              value={formatDisplayTime(
+                dateTime,
+                state.preferences.locale,
+                state.preferences.timeFormat,
+              )}
+            />
           </View>
-
-          {pickerMode ? (
-            <View className="mt-4 rounded-[24px] bg-paper p-3">
-              <DateTimePicker
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                minimumDate={pickerMode === 'date' ? new Date() : undefined}
-                mode={pickerMode}
-                onChange={onPickerChange}
-                value={dateTime}
-              />
-              {Platform.OS === 'ios' ? (
-                <Pressable
-                  className="min-h-11 items-center justify-center rounded-xl bg-secondary-fill"
-                  onPress={() => setPickerMode(null)}
-                >
-                  <Text className="text-[15px] font-semibold text-ink">Done</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
 
           <View className="mt-7">
             <Button label="Save schedule" loading={mutation.isPending} onPress={() => mutation.mutate()} />
           </View>
         </ScrollView>
+        {pickerMode ? (
+          <DateTimePickerSheet
+            locale={state.preferences.locale}
+            minimumDate={pickerMode === 'date' ? startOfDay(new Date()) : undefined}
+            mode={pickerMode}
+            timeFormat={state.preferences.timeFormat}
+            timezone={detail.schedule.timezone}
+            value={pickerDraft}
+            onCancel={() => setPickerMode(null)}
+            onChange={setPickerDraft}
+            onConfirm={applyPickerSelection}
+          />
+        ) : null}
       </SafeAreaView>
     </Modal>
   );
@@ -752,7 +1045,7 @@ function ScopeChoice({
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       className={cn(
-        'min-h-[76px] flex-row items-center rounded-[22px] border-2 bg-paper p-4',
+        'min-h-[76px] flex-row items-center rounded-[16px] border-2 bg-paper p-4',
         selected ? 'border-intelligence' : 'border-transparent',
       )}
       onPress={onPress}
@@ -766,52 +1059,69 @@ function ScopeChoice({
         {selected ? <View className="size-3 rounded-full bg-intelligence" /> : null}
       </View>
       <View className="ml-3 flex-1">
-        <Text className="text-[15px] font-semibold text-ink">{label}</Text>
-        <Text className="mt-1 text-[12px] leading-4 text-muted-ink">{description}</Text>
+        <Text className="text-[15px] font-inter-semibold text-foreground">{label}</Text>
+        <Text className="font-inter mt-1 text-[12px] leading-4 text-muted-foreground">{description}</Text>
       </View>
     </Pressable>
   );
 }
 
 function SectionTitle({ title }: { title: string }) {
-  return <Text className="mb-3 ml-1 mt-7 text-[20px] font-bold text-ink">{title}</Text>;
+  return (
+    <Text className="mb-2 ml-3 mt-7 font-inter-semibold text-[12px] text-muted-foreground">
+      {title.toUpperCase()}
+    </Text>
+  );
 }
 
 function DetailRow({ icon, label, value }: { icon: SymbolName; label: string; value: string }) {
   return (
     <View className="min-h-[68px] flex-row items-center px-4 py-3">
-      <View className="size-9 items-center justify-center rounded-full bg-secondary-fill">
+      <View className="size-9 items-center justify-center rounded-[11px] bg-secondary-fill">
         <SymbolIcon name={icon} size={18} />
       </View>
-      <Text className="ml-3 flex-1 text-[15px] font-medium text-ink">{label}</Text>
-      <Text className="ml-4 max-w-[48%] text-right text-[13px] text-muted-ink">{value}</Text>
+      <Text className="ml-3 flex-1 text-[15px] font-inter-medium text-foreground">{label}</Text>
+      <Text className="font-inter ml-4 max-w-[48%] text-right text-[13px] text-muted-foreground">{value}</Text>
     </View>
   );
 }
 
-function DateRow({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
+function DateRow({
+  icon,
+  label,
+  value,
+  onPress,
+}: {
+  icon: SymbolName;
+  label: string;
+  value: string;
+  onPress: () => void;
+}) {
   return (
     <Pressable
       accessibilityRole="button"
       className="min-h-[62px] flex-row items-center px-4 active:bg-canvas"
       onPress={onPress}
     >
-      <Text className="flex-1 text-[16px] font-medium text-ink">{label}</Text>
-      <Text className="text-[15px] text-muted-ink">{value}</Text>
-      <SymbolIcon className="ml-2 text-subtle-ink" name="chevron" size={24} />
+      <View className="mr-3 size-9 items-center justify-center rounded-[11px] bg-secondary-fill">
+        <SymbolIcon name={icon} size={17} />
+      </View>
+      <Text className="flex-1 text-[16px] font-inter-medium text-foreground">{label}</Text>
+      <Text className="font-inter text-[15px] text-muted-foreground">{value}</Text>
+      <SymbolIcon className="ml-2 text-subtle-foreground" name="chevron" size={24} />
     </Pressable>
   );
 }
 
 function Divider({ inset = false }: { inset?: boolean }) {
-  return <View className={cn('h-px bg-taupe/70', inset ? 'ml-16' : 'ml-4')} />;
+  return <View className={cn('h-px bg-secondary-fill', inset ? 'ml-16' : 'ml-4')} />;
 }
 
 function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <View className="rounded-[24px] bg-paper p-5">
-      <Text className="text-[19px] font-semibold text-ink">Reminder unavailable</Text>
-      <Text className="mt-2 text-[14px] leading-5 text-muted-ink">{message}</Text>
+    <View className="rounded-[16px] bg-paper p-5">
+      <Text className="text-[19px] font-inter-semibold text-foreground">Reminder unavailable</Text>
+      <Text className="font-inter mt-2 text-[14px] leading-5 text-muted-foreground">{message}</Text>
       <View className="mt-5">
         <Button label="Try again" onPress={onRetry} variant="secondary" />
       </View>
@@ -865,6 +1175,48 @@ function recurrenceLabel(detail: ReminderDetail) {
   }
 }
 
+type OccurrenceTimelineStatus = 'UPCOMING' | 'OVERDUE' | 'COMPLETED' | 'SKIPPED' | 'CANCELLED';
+
+function occurrenceTimelineStatus(
+  occurrence: ReminderDetail['occurrences'][number],
+  now: number,
+): OccurrenceTimelineStatus {
+  if (occurrence.lifecycle === 'SCHEDULED') {
+    return new Date(occurrence.effectiveScheduledAt).getTime() <= now ? 'OVERDUE' : 'UPCOMING';
+  }
+  return occurrence.lifecycle;
+}
+
+function occurrenceStatusTone(status: OccurrenceTimelineStatus) {
+  switch (status) {
+    case 'OVERDUE':
+      return 'bg-warning-soft';
+    case 'COMPLETED':
+      return 'bg-completed-soft';
+    case 'CANCELLED':
+      return 'bg-urgent-soft';
+    case 'SKIPPED':
+      return 'bg-secondary-fill';
+    case 'UPCOMING':
+      return 'bg-scheduled-soft';
+  }
+}
+
+function occurrenceStatusTextTone(status: OccurrenceTimelineStatus) {
+  switch (status) {
+    case 'OVERDUE':
+      return 'text-warning';
+    case 'COMPLETED':
+      return 'text-completed';
+    case 'CANCELLED':
+      return 'text-urgent';
+    case 'SKIPPED':
+      return 'text-muted-foreground';
+    case 'UPCOMING':
+      return 'text-scheduled';
+  }
+}
+
 function statusLabel(occurrence: ReminderDetail['occurrences'][number], now: number) {
   if (occurrence.lifecycle === 'SCHEDULED') {
     return new Date(occurrence.effectiveScheduledAt).getTime() <= now ? 'DUE NOW' : 'SCHEDULED';
@@ -905,6 +1257,38 @@ function formatOccurrence(
   }).format(new Date(instant));
 }
 
+function formatOccurrenceMonth(date: Date, locale: string, timezone: string) {
+  return new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    timeZone: timezone,
+  })
+    .format(date)
+    .replace('.', '')
+    .toUpperCase();
+}
+
+function formatOccurrenceDay(date: Date, locale: string, timezone: string) {
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    timeZone: timezone,
+  }).format(date);
+}
+
+function formatOccurrenceWeekdayTime(
+  date: Date,
+  locale: string,
+  timezone: string,
+  format: '12-hour' | '24-hour',
+) {
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: format === '12-hour',
+    timeZone: timezone,
+  }).format(date);
+}
+
 function formatHistoryTime(instant: string, locale: string) {
   return new Intl.DateTimeFormat(locale, {
     month: 'short',
@@ -926,6 +1310,50 @@ function formatLocalDate(date: Date) {
 
 function formatLocalTime(date: Date) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatDisplayDate(date: Date, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function formatDisplayTime(date: Date, locale: string, format: '12-hour' | '24-hour') {
+  return new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: format === '12-hour',
+  }).format(date);
+}
+
+function formatLocalSchedule(
+  localDate: string,
+  localTime: string,
+  locale: string,
+  format: '12-hour' | '24-hour',
+) {
+  const date = fromLocalParts(localDate, localTime);
+  return `${formatDisplayDate(date, locale)} · ${formatDisplayTime(date, locale, format)}`;
+}
+
+function mergeDate(current: Date, selected: Date) {
+  const next = new Date(current);
+  next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+  return next;
+}
+
+function mergeTime(current: Date, selected: Date) {
+  const next = new Date(current);
+  next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+  return next;
+}
+
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
 }
 
 function formatDuration(minutes: number) {

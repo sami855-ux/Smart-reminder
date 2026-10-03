@@ -36,17 +36,17 @@ export function Screen({
           <View className="w-full max-w-[560px] flex-grow self-center px-5 pb-8 pt-4">
             <View className="mb-7">
               {eyebrow ? (
-                <Text className="mb-2 text-[15px] font-medium text-intelligence">
+                <Text className="mb-2 font-inter-medium text-[13px] text-accent">
                   {eyebrow}
                 </Text>
               ) : null}
               <Text
                 accessibilityRole="header"
-                className="max-w-[460px] text-[34px] font-bold leading-[41px] text-ink"
+                className="max-w-[460px] font-inter-bold text-[32px] leading-[38px] text-foreground"
               >
                 {title}
               </Text>
-              <Text className="mt-2 max-w-[500px] text-[17px] font-normal leading-6 text-muted-ink/80">
+              <Text className="mt-2 max-w-[500px] font-inter text-[15px] leading-6 text-muted-foreground">
                 {description}
               </Text>
             </View>

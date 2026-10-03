@@ -18,16 +18,16 @@ export function PermissionWarning({
   return (
     <View
       accessibilityRole="alert"
-      className="flex-row gap-3 rounded-2xl border border-urgent/20 bg-urgent-soft p-4"
+      className="flex-row gap-3 rounded-lg border border-urgent/20 bg-urgent-soft p-4"
     >
-      <View className="size-9 items-center justify-center rounded-xl bg-urgent">
-        <Text className="font-semibold text-base text-white">!</Text>
+      <View className="size-9 items-center justify-center rounded-lg bg-urgent">
+        <Text className="font-inter-semibold text-base text-white">!</Text>
       </View>
       <View className="flex-1">
-        <Text className="font-semibold text-base text-ink">
+        <Text className="font-inter-semibold text-base text-foreground">
           Background alerts are off
         </Text>
-        <Text className="mt-1 font-normal text-sm leading-5 text-muted-ink">
+        <Text className="mt-1 font-inter text-sm leading-5 text-muted-foreground">
           You can still use Smart Reminder. To receive alerts while the app is
           closed, allow notifications in your device settings.
         </Text>
@@ -37,7 +37,7 @@ export function PermissionWarning({
           className="min-h-11 self-start justify-center active:opacity-70"
           onPress={onOpenSettings}
         >
-          <Text className="font-semibold text-sm text-urgent">
+          <Text className="font-inter-semibold text-sm text-urgent">
             Open system settings
           </Text>
         </Pressable>

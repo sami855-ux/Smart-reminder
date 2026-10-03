@@ -98,6 +98,12 @@ describe('RemindersService idempotent creation', () => {
 
     expect(result.idempotency).toEqual({ key, replayed: true });
     expect(result.id).toBe('30000000-0000-4000-8000-000000000001');
+    expect(result.occurrences).toEqual([
+      expect.objectContaining({
+        id: '50000000-0000-4000-8000-000000000001',
+        sequence: 1,
+      }),
+    ]);
     expect(transaction).not.toHaveBeenCalled();
   });
 
@@ -123,6 +129,7 @@ describe('RemindersService idempotent creation', () => {
     const result = await service.create({ userId, sessionId }, key, dto, now);
 
     expect(result.idempotency).toEqual({ key, replayed: false });
+    expect(result.occurrences).toHaveLength(1);
     expect(tx.reminder.create).toHaveBeenCalledOnce();
     expect(tx.schedule.create).toHaveBeenCalledOnce();
     expect(tx.reminderOccurrence.create).toHaveBeenCalledOnce();

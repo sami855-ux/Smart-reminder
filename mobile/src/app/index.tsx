@@ -1,9 +1,10 @@
 import { Redirect } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../components/ui/Button';
 import { Screen } from '../components/ui/Screen';
+import { Skeleton } from '../components/ui/Skeleton';
 import { useOnboarding } from '../onboarding/onboarding-context';
 
 export default function IndexScreen() {
@@ -14,9 +15,17 @@ export default function IndexScreen() {
     return (
       <View
         accessibilityLabel="Loading Smart Reminder"
-        className="flex-1 items-center justify-center bg-canvas"
+        accessibilityRole="progressbar"
+        className="flex-1 bg-canvas px-6 pt-24"
       >
-        <ActivityIndicator color="#007AFF" size="large" />
+        <View className="w-full max-w-[520px] self-center">
+          <Skeleton className="size-12 rounded-[14px]" />
+          <Skeleton className="mt-10 h-9 w-3/4" />
+          <Skeleton className="mt-4 h-4 w-full" />
+          <Skeleton className="mt-2 h-4 w-4/5" />
+          <Skeleton className="mt-10 h-14 w-full rounded-[14px]" />
+          <Skeleton className="mt-4 h-14 w-full rounded-[14px]" />
+        </View>
       </View>
     );
   }

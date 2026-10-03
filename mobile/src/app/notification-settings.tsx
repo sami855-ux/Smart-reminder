@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isRunningInExpoGo } from 'expo';
 import { Redirect, useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
 import { formErrorMessage } from '../auth/form-error';
 import { OneUIHeader } from '../components/ui/OneUIHeader';
+import { AlertDialog } from '../components/ui/AlertDialog';
+import { AppleSwitch } from '../components/ui/AppleSwitch';
+import { ListSkeleton } from '../components/ui/Skeleton';
 import { SymbolIcon } from '../components/ui/SymbolIcon';
 import { useToast } from '../components/ui/ToastProvider';
 import {
@@ -18,11 +22,23 @@ import { cn } from '../lib/cn';
 import { useOnboarding } from '../onboarding/onboarding-context';
 import {
   notificationPermissionAllowsAlerts,
+  openExactAlarmSettings,
   openNotificationSettings,
+  openNotificationSoundSettings,
 } from '../platform/notifications/notification-permission';
-import { reconcileReminderNotifications } from '../platform/notifications/reminder-notification-scheduler';
+import {
+  getNotificationAlertPreferences,
+  notificationAlertPreferencesQueryKey,
+  updateNotificationAlertPreferences,
+  type NotificationAlertPreferences,
+} from '../platform/notifications/notification-alert-preferences';
+import {
+  prepareSelectedNotificationChannel,
+  reconcileReminderNotifications,
+} from '../platform/notifications/reminder-notification-scheduler';
 import {
   getNotificationPreferences,
+  notificationPreferencesQueryKey,
   updateNotificationPreferences,
   type NotificationPreferences,
 } from '../preferences/preferences.api';
@@ -34,9 +50,15 @@ export default function NotificationSettingsScreen() {
   const { state, reconcilePermission } = useOnboarding();
   const { showToast } = useToast();
   const [currentInstallationId, setCurrentInstallationId] = useState<string | null>(null);
+  const [deviceToRevoke, setDeviceToRevoke] = useState<string | null>(null);
   const preferences = useQuery({
-    queryKey: ['notification-preferences'],
+    queryKey: notificationPreferencesQueryKey,
     queryFn: getNotificationPreferences,
+    enabled: status === 'authenticated',
+  });
+  const alertPreferences = useQuery({
+    queryKey: notificationAlertPreferencesQueryKey,
+    queryFn: getNotificationAlertPreferences,
     enabled: status === 'authenticated',
   });
   const devices = useQuery({
@@ -69,8 +91,8 @@ export default function NotificationSettingsScreen() {
       });
     },
     onSuccess: async (updated) => {
-      queryClient.setQueryData(['notification-preferences'], updated);
-      await reconcileReminderNotifications().catch(() => undefined);
+      queryClient.setQueryData(notificationPreferencesQueryKey, updated);
+      await reconcileReminderNotifications({ force: true }).catch(() => undefined);
       showToast({
         title: 'Notification settings updated',
         message: 'Your account preference revision is now current.',
@@ -89,11 +111,34 @@ export default function NotificationSettingsScreen() {
   const revokeMutation = useMutation({
     mutationFn: revokeDeviceInstallation,
     onSuccess: async () => {
+      setDeviceToRevoke(null);
       await devices.refetch();
       showToast({ title: 'Device revoked', message: 'Its pending mappings were cancelled.', tone: 'success' });
     },
+    onError: (error) => {
+      setDeviceToRevoke(null);
+      showToast({ title: 'Couldn’t revoke the device', message: formErrorMessage(error), tone: 'error' });
+    },
+  });
+  const updateAlertMutation = useMutation({
+    mutationFn: (patch: Partial<NotificationAlertPreferences>) =>
+      updateNotificationAlertPreferences(patch),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(notificationAlertPreferencesQueryKey, updated);
+      await prepareSelectedNotificationChannel().catch(() => null);
+      await reconcileReminderNotifications({ force: true }).catch(() => undefined);
+      showToast({
+        title: 'Alert behavior updated',
+        message: 'Future reminder alerts on this device use your new choice.',
+        tone: 'success',
+      });
+    },
     onError: (error) =>
-      showToast({ title: 'Couldn’t revoke the device', message: formErrorMessage(error), tone: 'error' }),
+      showToast({
+        title: 'Couldn’t update alert behavior',
+        message: formErrorMessage(error),
+        tone: 'error',
+      }),
   });
 
   if (status !== 'authenticated') return <Redirect href="/" />;
@@ -118,18 +163,32 @@ export default function NotificationSettingsScreen() {
     }
   }
 
+  async function openSoundPicker() {
+    try {
+      const channelId = await prepareSelectedNotificationChannel();
+      await openNotificationSoundSettings(channelId);
+    } catch (error) {
+      showToast({
+        title: 'Couldn’t open sound settings',
+        message: formErrorMessage(error),
+        tone: 'error',
+      });
+    }
+  }
+
   return (
-    <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
+    <>
+      <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
       <ScrollView contentContainerClassName="pb-12" showsVerticalScrollIndicator={false}>
         <View className="w-full max-w-[680px] self-center">
           <OneUIHeader
             onBack={() => router.back()}
-            subtitle="Control device permission, quiet hours, privacy, and signed-in installations."
+            subtitle="Choose how this phone gets your attention."
             title="Notifications"
           />
           <View className="px-5">
             <SectionTitle title="This device" />
-            <View className="rounded-[24px] bg-paper p-4">
+            <View className="rounded-[20px] bg-paper p-4">
               <View className="flex-row items-center">
                 <View
                   className={cn(
@@ -144,10 +203,10 @@ export default function NotificationSettingsScreen() {
                   />
                 </View>
                 <View className="ml-3 flex-1">
-                  <Text className="text-[16px] font-semibold text-ink">
+                  <Text className="text-[16px] font-inter-semibold text-foreground">
                     {alertsAllowed ? 'Alerts are allowed' : 'Alerts need attention'}
                   </Text>
-                  <Text className="mt-1 text-[13px] text-muted-ink">
+                  <Text className="font-inter mt-1 text-[13px] text-muted-foreground">
                     System status: {state.notificationPermission.replaceAll('-', ' ')}
                   </Text>
                 </View>
@@ -155,22 +214,166 @@ export default function NotificationSettingsScreen() {
               <View className="mt-4 flex-row gap-2">
                 <Pressable
                   accessibilityRole="button"
-                  className="min-h-11 flex-1 items-center justify-center rounded-full bg-secondary-fill"
+                  className="min-h-11 flex-1 items-center justify-center rounded-[12px] bg-secondary-fill"
                   onPress={() => void refreshDevicePermission()}
                 >
-                  <Text className="text-[13px] font-semibold text-ink">Refresh status</Text>
+                  <Text className="text-[13px] font-inter-semibold text-foreground">Refresh status</Text>
                 </Pressable>
                 {!alertsAllowed ? (
                   <Pressable
                     accessibilityRole="button"
-                    className="min-h-11 flex-1 items-center justify-center rounded-full bg-intelligence"
+                    className="min-h-11 flex-1 items-center justify-center rounded-[12px] bg-ink"
                     onPress={() => void openNotificationSettings()}
                   >
-                    <Text className="text-[13px] font-semibold text-white">Open settings</Text>
+                    <Text className="font-inter-semibold text-[13px] text-kast-lime">Open settings</Text>
                   </Pressable>
                 ) : null}
               </View>
             </View>
+
+            {Platform.OS === 'android' ? (
+              <>
+                <SectionTitle title="Precise timing" />
+                <View className="rounded-[18px] bg-paper p-4">
+                  <View className="flex-row items-start">
+                    <View className="size-10 items-center justify-center rounded-[12px] bg-warning-soft">
+                      <SymbolIcon className="text-warning" name="clock" size={19} />
+                    </View>
+                    <View className="ml-3 flex-1">
+                      <Text className="text-[15px] font-inter-semibold text-foreground">
+                        Alarms &amp; reminders access
+                      </Text>
+                      <Text className="font-inter mt-1 text-[12px] leading-[18px] text-muted-foreground">
+                        {isRunningInExpoGo()
+                          ? 'Expo Go does not install this app’s exact-alarm permission. Use a development build for reliable alerts while the app is closed.'
+                          : 'Android may require this separate access before a reminder can fire at the exact selected minute.'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    className="mt-4 min-h-11 items-center justify-center rounded-[12px] bg-secondary-fill"
+                    onPress={() => void openExactAlarmSettings()}
+                  >
+                    <Text className="text-[13px] font-inter-semibold text-foreground">
+                      Open precise-alarm settings
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : null}
+
+            <SectionTitle title="Sound" />
+            {alertPreferences.isPending ? (
+              <LoadingCard />
+            ) : alertPreferences.isError || !alertPreferences.data ? (
+              <ErrorCard
+                message={formErrorMessage(alertPreferences.error)}
+                onRetry={() => void alertPreferences.refetch()}
+              />
+            ) : (
+              <View className="overflow-hidden rounded-[18px] bg-paper">
+                <ChoiceRow
+                  description="Use the tone selected for Smart Reminder on this phone"
+                  disabled={updateAlertMutation.isPending}
+                  label="Device sound"
+                  selected={alertPreferences.data.sound === 'DEFAULT'}
+                  onPress={() => updateAlertMutation.mutate({ sound: 'DEFAULT' })}
+                />
+                <Divider />
+                <ChoiceRow
+                  description="Show the alert without playing a sound"
+                  disabled={updateAlertMutation.isPending}
+                  label="Silent"
+                  selected={alertPreferences.data.sound === 'SILENT'}
+                  onPress={() => updateAlertMutation.mutate({ sound: 'SILENT' })}
+                />
+                {Platform.OS === 'android' && alertPreferences.data.sound === 'DEFAULT' ? (
+                  <>
+                    <Divider />
+                    <Pressable
+                      accessibilityHint="Opens this reminder channel in Android settings"
+                      accessibilityRole="button"
+                      className="min-h-[60px] flex-row items-center px-4 active:bg-canvas"
+                      onPress={() => void openSoundPicker()}
+                    >
+                      <View className="flex-1 pr-3">
+                        <Text className="text-[15px] font-inter-semibold text-accent">
+                          Choose sound on this phone
+                        </Text>
+                        <Text className="font-inter mt-1 text-[12px] leading-4 text-muted-foreground">
+                          Opens Android settings for the active reminder channel
+                        </Text>
+                      </View>
+                      <SymbolIcon className="text-accent" name="chevron" size={22} />
+                    </Pressable>
+                  </>
+                ) : null}
+              </View>
+            )}
+
+            {alertPreferences.data ? (
+              <>
+                <SectionTitle title="Vibration" />
+                {Platform.OS === 'android' ? (
+                  <View className="overflow-hidden rounded-[18px] bg-paper">
+                    {([
+                      ['OFF', 'Off', 'Never vibrate for reminders'],
+                      ['SHORT', 'Short', 'One brief vibration'],
+                      ['STANDARD', 'Standard', 'Two clear pulses'],
+                      ['STRONG', 'Strong', 'A longer alarm-style pattern'],
+                    ] as const).map(([value, label, description], index) => (
+                      <View key={value}>
+                        {index > 0 ? <Divider /> : null}
+                        <ChoiceRow
+                          description={description}
+                          disabled={updateAlertMutation.isPending}
+                          label={label}
+                          selected={alertPreferences.data?.vibration === value}
+                          onPress={() => updateAlertMutation.mutate({ vibration: value })}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Pressable
+                    accessibilityRole="button"
+                    className="min-h-[68px] flex-row items-center rounded-[18px] bg-paper px-4 py-3"
+                    onPress={() => void openNotificationSettings()}
+                  >
+                    <View className="flex-1 pr-3">
+                      <Text className="text-[15px] font-inter-semibold text-foreground">System controlled</Text>
+                      <Text className="font-inter mt-1 text-[12px] leading-4 text-muted-foreground">
+                        Use your phone’s notification and haptic settings
+                      </Text>
+                    </View>
+                    <SymbolIcon className="text-accent" name="chevron" size={22} />
+                  </Pressable>
+                )}
+
+                <SectionTitle title="When a reminder is due" />
+                <View className="overflow-hidden rounded-[18px] bg-paper">
+                  <ChoiceRow
+                    description="Show the clock-style action screen immediately while the app is open"
+                    disabled={updateAlertMutation.isPending}
+                    label="Alarm screen"
+                    selected={alertPreferences.data.alertStyle === 'ALARM'}
+                    onPress={() => updateAlertMutation.mutate({ alertStyle: 'ALARM' })}
+                  />
+                  <Divider />
+                  <ChoiceRow
+                    description="Stay on the current screen and show only the system alert"
+                    disabled={updateAlertMutation.isPending}
+                    label="Notification only"
+                    selected={alertPreferences.data.alertStyle === 'NOTIFICATION'}
+                    onPress={() => updateAlertMutation.mutate({ alertStyle: 'NOTIFICATION' })}
+                  />
+                </View>
+                <Text className="font-inter mx-3 mt-2 text-[12px] leading-[18px] text-muted-foreground">
+                  If the app is closed or the phone is locked, tap the high-priority notification to open the alarm screen. Android restricts automatic lock-screen takeovers to approved alarm apps.
+                </Text>
+              </>
+            ) : null}
 
             <SectionTitle title="Delivery" />
             {preferences.isPending ? (
@@ -178,7 +381,7 @@ export default function NotificationSettingsScreen() {
             ) : preferences.isError || !preferences.data ? (
               <ErrorCard message={formErrorMessage(preferences.error)} onRetry={() => void preferences.refetch()} />
             ) : (
-              <View className="overflow-hidden rounded-[24px] bg-paper">
+              <View className="overflow-hidden rounded-[18px] bg-paper">
                 <ToggleRow
                   description="Keep reminders saved while stopping account-level alerts"
                   disabled={updateMutation.isPending}
@@ -200,7 +403,7 @@ export default function NotificationSettingsScreen() {
                   }
                 />
                 {preferences.data.quietHoursStart ? (
-                  <Text className="border-t border-taupe/70 px-4 py-3 text-[13px] text-muted-ink">
+                  <Text className="font-inter border-t border-taupe/70 px-4 py-3 text-[13px] text-muted-foreground">
                     {preferences.data.quietHoursStart} – {preferences.data.quietHoursEnd} · {preferences.data.timezone}
                   </Text>
                 ) : null}
@@ -210,7 +413,7 @@ export default function NotificationSettingsScreen() {
             {preferences.data ? (
               <>
                 <SectionTitle title="Lock screen privacy" />
-                <View className="overflow-hidden rounded-[24px] bg-paper">
+                <View className="overflow-hidden rounded-[18px] bg-paper">
                   {([
                     ['FULL', 'Show title and note'],
                     ['TITLE_ONLY', 'Show title only'],
@@ -225,7 +428,7 @@ export default function NotificationSettingsScreen() {
                         disabled={updateMutation.isPending}
                         onPress={() => updateMutation.mutate({ lockScreenPrivacy: value })}
                       >
-                        <Text className="flex-1 text-[15px] font-medium text-ink">{label}</Text>
+                        <Text className="flex-1 text-[15px] font-inter-medium text-foreground">{label}</Text>
                         <View
                           className={cn(
                             'size-6 items-center justify-center rounded-full border-2',
@@ -251,30 +454,30 @@ export default function NotificationSettingsScreen() {
             ) : devices.isError ? (
               <ErrorCard message={formErrorMessage(devices.error)} onRetry={() => void devices.refetch()} />
             ) : (
-              <View className="overflow-hidden rounded-[24px] bg-paper">
+              <View className="overflow-hidden rounded-[18px] bg-paper">
                 {(devices.data ?? []).map((device, index) => (
                   <View key={device.id}>
                     {index > 0 ? <Divider inset /> : null}
                     <View className="min-h-[76px] flex-row items-center px-4 py-3">
-                      <View className="size-10 items-center justify-center rounded-full bg-secondary-fill">
-                        <Text className="text-[18px] font-bold text-ink">{device.platform === 'ANDROID' ? 'A' : 'i'}</Text>
+                      <View className="size-10 items-center justify-center rounded-[12px] bg-secondary-fill">
+                        <Text className="text-[18px] font-inter-bold text-foreground">{device.platform === 'ANDROID' ? 'A' : 'i'}</Text>
                       </View>
                       <View className="ml-3 flex-1">
-                        <Text className="text-[15px] font-semibold text-ink">
+                        <Text className="text-[15px] font-inter-semibold text-foreground">
                           {device.id === currentInstallationId ? 'This device' : device.platform === 'ANDROID' ? 'Android device' : 'iOS device'}
                         </Text>
-                        <Text className="mt-1 text-[12px] text-muted-ink">
+                        <Text className="font-inter mt-1 text-[12px] text-muted-foreground">
                           {device.permissionState.toLowerCase()} · app {device.appVersion}
                         </Text>
                       </View>
                       {device.id !== currentInstallationId && !device.revokedAt ? (
                         <Pressable
                           accessibilityRole="button"
-                          className="min-h-10 justify-center rounded-full bg-urgent-soft px-3"
+                          className="min-h-10 justify-center rounded-[12px] bg-urgent-soft px-3"
                           disabled={revokeMutation.isPending}
-                          onPress={() => revokeMutation.mutate(device.id)}
+                          onPress={() => setDeviceToRevoke(device.id)}
                         >
-                          <Text className="text-[12px] font-semibold text-urgent">Revoke</Text>
+                          <Text className="text-[12px] font-inter-semibold text-urgent">Revoke</Text>
                         </Pressable>
                       ) : null}
                     </View>
@@ -285,7 +488,20 @@ export default function NotificationSettingsScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+      <AlertDialog
+        confirmLabel="Revoke device"
+        loading={revokeMutation.isPending}
+        message="This device will stop receiving reminder updates and will need to sign in again."
+        title="Revoke this device?"
+        tone="destructive"
+        visible={deviceToRevoke !== null}
+        onCancel={() => setDeviceToRevoke(null)}
+        onConfirm={() => {
+          if (deviceToRevoke) revokeMutation.mutate(deviceToRevoke);
+        }}
+      />
+    </>
   );
 }
 
@@ -305,42 +521,78 @@ function ToggleRow({
   return (
     <View className="min-h-[78px] flex-row items-center px-4 py-3">
       <View className="flex-1 pr-4">
-        <Text className="text-[15px] font-semibold text-ink">{label}</Text>
-        <Text className="mt-1 text-[12px] leading-4 text-muted-ink">{description}</Text>
+        <Text className="text-[15px] font-inter-semibold text-foreground">{label}</Text>
+        <Text className="font-inter mt-1 text-[12px] leading-4 text-muted-foreground">{description}</Text>
       </View>
-      <Switch
+      <AppleSwitch
         disabled={disabled}
+        label={label}
         onValueChange={onValueChange}
-        thumbColor="#FFFFFF"
-        trackColor={{ false: '#DADCE2', true: '#2764E7' }}
         value={value}
       />
     </View>
   );
 }
 
+function ChoiceRow({
+  label,
+  description,
+  selected,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  description: string;
+  selected: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ disabled, selected }}
+      className="min-h-[68px] flex-row items-center px-4 py-3 active:bg-canvas"
+      disabled={disabled}
+      onPress={onPress}
+    >
+      <View className="flex-1 pr-4">
+        <Text className="text-[15px] font-inter-semibold text-foreground">{label}</Text>
+        <Text className="font-inter mt-1 text-[12px] leading-4 text-muted-foreground">{description}</Text>
+      </View>
+      <View
+        className={cn(
+          'size-6 items-center justify-center rounded-full border-2',
+          selected ? 'border-intelligence' : 'border-taupe',
+        )}
+      >
+        {selected ? <View className="size-3 rounded-full bg-intelligence" /> : null}
+      </View>
+    </Pressable>
+  );
+}
+
 function SectionTitle({ title }: { title: string }) {
-  return <Text className="mb-3 ml-1 mt-7 text-[20px] font-bold text-ink">{title}</Text>;
+  return (
+    <Text className="mb-2 ml-3 mt-7 font-inter-semibold text-[12px] text-muted-foreground">
+      {title.toUpperCase()}
+    </Text>
+  );
 }
 
 function Divider({ inset = false }: { inset?: boolean }) {
-  return <View className={cn('h-px bg-taupe/70', inset ? 'ml-16' : 'ml-4')} />;
+  return <View className={cn('h-px bg-secondary-fill', inset ? 'ml-16' : 'ml-4')} />;
 }
 
 function LoadingCard() {
-  return (
-    <View className="items-center rounded-[24px] bg-paper py-8">
-      <ActivityIndicator color="#2764E7" />
-    </View>
-  );
+  return <ListSkeleton rows={2} />;
 }
 
 function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <View className="rounded-[24px] bg-paper p-4">
-      <Text className="text-[14px] leading-5 text-muted-ink">{message}</Text>
-      <Pressable className="mt-3 min-h-11 items-center justify-center rounded-full bg-secondary-fill" onPress={onRetry}>
-        <Text className="text-[13px] font-semibold text-ink">Try again</Text>
+    <View className="rounded-[18px] bg-paper p-4">
+      <Text className="font-inter text-[14px] leading-5 text-muted-foreground">{message}</Text>
+      <Pressable className="mt-3 min-h-11 items-center justify-center rounded-[12px] bg-secondary-fill" onPress={onRetry}>
+        <Text className="text-[13px] font-inter-semibold text-foreground">Try again</Text>
       </Pressable>
     </View>
   );

@@ -10,6 +10,7 @@ import {
 } from '../../auth/auth.schemas';
 import { formErrorMessage } from '../../auth/form-error';
 import { AuthScreen } from '../../components/auth/AuthScreen';
+import { AuthIcon } from '../../components/ui/AuthIcon';
 import { Button } from '../../components/ui/Button';
 import { TextField } from '../../components/ui/TextField';
 import { TextLink } from '../../components/ui/TextLink';
@@ -44,15 +45,17 @@ export default function RegisterScreen() {
 
   return (
     <AuthScreen
-      description="Set up your account to keep reminders secure and available across devices."
+      appearance="auth"
+      description="Create an account to keep your reminders secure and available across your devices."
       footer={
         <View className="flex-row flex-wrap items-center justify-center gap-1">
-          <Text className="text-sm font-normal text-muted-ink">
+          <Text className="font-inter text-sm text-auth-muted">
             Already have an account?
           </Text>
           <TextLink
             label="Sign in"
             onPress={() => router.replace('/(auth)/sign-in')}
+            tone="auth"
           />
         </View>
       }
@@ -68,6 +71,7 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               autoComplete="email"
               error={fieldState.error?.message}
+              icon="mail"
               keyboardType="email-address"
               label="Email address"
               onBlur={onBlur}
@@ -75,6 +79,7 @@ export default function RegisterScreen() {
               placeholder="name@example.com"
               returnKeyType="next"
               textContentType="emailAddress"
+              tone="auth"
               value={value}
             />
           )}
@@ -88,12 +93,14 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               autoComplete="new-password"
               error={fieldState.error?.message}
+              icon="lock"
               label="Password"
               onBlur={onBlur}
               onChangeText={onChange}
               placeholder="Create a password"
               secureTextEntry
               textContentType="newPassword"
+              tone="auth"
               value={value}
             />
           )}
@@ -107,6 +114,7 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               autoComplete="new-password"
               error={fieldState.error?.message}
+              icon="check"
               label="Confirm password"
               onBlur={onBlur}
               onChangeText={onChange}
@@ -115,20 +123,27 @@ export default function RegisterScreen() {
               returnKeyType="done"
               secureTextEntry
               textContentType="newPassword"
+              tone="auth"
               value={value}
             />
           )}
         />
 
-        <Text className="text-[13px] font-normal leading-5 text-muted-ink">
-          Use at least 12 characters. Avoid names and commonly used passwords.
-        </Text>
+        <View className="flex-row items-start gap-3">
+          <View className="mt-0.5">
+            <AuthIcon name="shield" size={18} />
+          </View>
+          <Text className="flex-1 font-inter text-[13px] leading-5 text-auth-muted">
+            Use 12 or more characters. Skip names and commonly used passwords.
+          </Text>
+        </View>
 
         <View className="mt-1">
           <Button
             label="Create account"
             loading={isSubmitting}
             onPress={() => void submit()}
+            tone="auth"
           />
         </View>
       </View>

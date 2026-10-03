@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { useAuth } from '../../auth/AuthProvider';
 import {
@@ -10,6 +10,7 @@ import {
 } from '../../auth/auth.schemas';
 import { formErrorMessage } from '../../auth/form-error';
 import { AuthScreen } from '../../components/auth/AuthScreen';
+import { AuthIcon } from '../../components/ui/AuthIcon';
 import { Button } from '../../components/ui/Button';
 import { TextField } from '../../components/ui/TextField';
 import { TextLink } from '../../components/ui/TextLink';
@@ -51,12 +52,14 @@ export default function ForgotPasswordScreen() {
 
   return (
     <AuthScreen
-      description="Enter the email address connected to your account. We’ll send a secure reset link if the account is eligible."
+      appearance="auth"
+      description="Enter your account email and we’ll send a secure link to reset your password."
       footer={
         <View className="items-center">
           <TextLink
             label="Back to sign in"
             onPress={() => router.replace('/(auth)/sign-in')}
+            tone="auth"
           />
         </View>
       }
@@ -72,6 +75,7 @@ export default function ForgotPasswordScreen() {
               autoCapitalize="none"
               autoComplete="email"
               error={fieldState.error?.message}
+              icon="mail"
               keyboardType="email-address"
               label="Email address"
               onBlur={onBlur}
@@ -80,15 +84,26 @@ export default function ForgotPasswordScreen() {
               onSubmitEditing={() => void submit()}
               returnKeyType="send"
               textContentType="emailAddress"
+              tone="auth"
               value={value}
             />
           )}
         />
+        <View className="flex-row items-start gap-3">
+          <View className="mt-0.5">
+            <AuthIcon name="shield" size={18} />
+          </View>
+          <Text className="flex-1 font-inter text-[13px] leading-5 text-auth-muted">
+            For your privacy, we use the same response whether or not an account
+            exists.
+          </Text>
+        </View>
         <View className="mt-1">
           <Button
             label="Send reset link"
             loading={isSubmitting}
             onPress={() => void submit()}
+            tone="auth"
           />
         </View>
       </View>

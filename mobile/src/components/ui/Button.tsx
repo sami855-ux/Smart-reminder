@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { cn } from '../../lib/cn';
+import { useAppTheme } from '../../theme/theme-context';
+import { AuthIcon } from './AuthIcon';
 
 type ButtonProps = {
   label: string;
@@ -11,6 +13,7 @@ type ButtonProps = {
   loading?: boolean;
   icon?: ReactNode;
   accessibilityHint?: string;
+  tone?: 'light' | 'auth';
 };
 
 export function Button({
@@ -21,8 +24,11 @@ export function Button({
   loading = false,
   icon,
   accessibilityHint,
+  tone = 'light',
 }: ButtonProps) {
+  const { colors } = useAppTheme();
   const isDisabled = disabled || loading;
+  const isAuth = tone === 'auth';
 
   return (
     <Pressable
@@ -30,35 +36,63 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       className={cn(
-        'min-h-[54px] items-center justify-center rounded-2xl px-6 active:opacity-75',
-        variant === 'primary' && 'bg-intelligence',
-        variant === 'secondary' && 'bg-secondary-fill',
+        'min-h-[56px] items-center justify-center rounded-[14px] px-5 active:opacity-75',
+        variant === 'primary' &&
+          (isAuth ? 'bg-auth-accent' : 'bg-intelligence'),
+        variant === 'secondary' &&
+          (isAuth
+            ? 'border border-auth-line bg-auth-surface'
+            : 'bg-secondary-fill'),
         variant === 'text' && 'min-h-11 bg-transparent',
         isDisabled && 'opacity-50',
       )}
       disabled={isDisabled}
       onPress={onPress}
     >
-      <View className="flex-row items-center gap-2.5">
-        {loading ? (
-          <ActivityIndicator
-            color={variant === 'primary' ? '#FFFFFF' : '#20201E'}
-          />
-        ) : (
-          icon
+      <View
+        className={cn(
+          'flex-row items-center gap-2.5',
+          isAuth && variant === 'primary' && 'w-full justify-between',
         )}
-        <Text
-          className={cn(
-            'text-[17px] font-semibold',
-            variant === 'primary'
-              ? 'text-white'
-              : variant === 'secondary'
-                ? 'text-ink'
-                : 'text-intelligence',
+      >
+        <View className="flex-row items-center gap-2.5">
+          {loading ? (
+            <ActivityIndicator
+              color={
+                variant === 'primary'
+                  ? isAuth
+                    ? '#121510'
+                    : '#FFFFFF'
+                  : colors.foreground
+              }
+            />
+          ) : (
+            icon
           )}
-        >
-          {label}
-        </Text>
+          <Text
+            className={cn(
+              isAuth
+                ? 'font-display-semibold text-[16px]'
+                : 'text-[17px] font-inter-semibold',
+              variant === 'primary'
+                ? isAuth
+                  ? 'text-auth-accent-ink'
+                  : 'text-white'
+                : variant === 'secondary'
+                  ? isAuth
+                    ? 'text-auth-ink'
+                    : 'text-foreground'
+                  : isAuth
+                    ? 'text-auth-accent'
+                    : 'text-accent',
+            )}
+          >
+            {label}
+          </Text>
+        </View>
+        {isAuth && variant === 'primary' && !loading ? (
+          <AuthIcon color="#121510" name="arrow-right" size={21} />
+        ) : null}
       </View>
     </Pressable>
   );

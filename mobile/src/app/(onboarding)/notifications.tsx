@@ -85,26 +85,26 @@ export default function NotificationsScreen() {
       title="Stay on time"
     >
       <View className="mb-5 overflow-hidden rounded-3xl bg-intelligence-soft p-4">
-        <Text className="mb-3 font-semibold text-xs text-intelligence-dark">
+        <Text className="mb-3 font-semibold text-xs text-accent">
           NOTIFICATION PREVIEW
         </Text>
         <View className="flex-row">
         <View className="w-[72px] items-start pt-4">
-          <Text className="font-semibold text-[15px] text-intelligence-dark">09:00</Text>
-          <Text className="mt-1 font-normal text-xs text-muted-ink">AM</Text>
+          <Text className="font-semibold text-[15px] text-accent">09:00</Text>
+          <Text className="mt-1 font-normal text-xs text-muted-foreground">AM</Text>
         </View>
         <View className="mr-4 items-center">
           <View className="size-2.5 rounded-full bg-intelligence" />
           <View className="w-px flex-1 bg-taupe" />
         </View>
         <View className="flex-1 rounded-2xl border border-taupe bg-paper p-4">
-          <Text className="font-semibold text-[15px] text-ink">
+          <Text className="font-semibold text-[15px] text-foreground">
             Smart Reminder
           </Text>
-          <Text className="mt-1 font-normal text-sm leading-5 text-muted-ink">
+          <Text className="mt-1 font-normal text-sm leading-5 text-muted-foreground">
             Your next reminder is ready when you need it.
           </Text>
-          <Text className="mt-3 font-normal text-xs text-muted-ink">now</Text>
+          <Text className="mt-3 font-normal text-xs text-muted-foreground">now</Text>
         </View>
         </View>
       </View>
@@ -134,10 +134,10 @@ export default function NotificationsScreen() {
           accessibilityRole="alert"
           className="mt-4 rounded-2xl border border-success/20 bg-success-soft px-4 py-3.5"
         >
-          <Text className="font-semibold text-[15px] text-ink">
+          <Text className="font-semibold text-[15px] text-foreground">
             Notifications are enabled
           </Text>
-          <Text className="mt-1 font-normal text-sm leading-5 text-muted-ink">
+          <Text className="mt-1 font-normal text-sm leading-5 text-muted-foreground">
             This device currently allows Smart Reminder to show alerts.
           </Text>
         </View>
@@ -149,7 +149,7 @@ export default function NotificationsScreen() {
           />
         </View>
       ) : (
-        <Text className="mx-2 mt-4 text-center font-normal text-[13px] leading-5 text-muted-ink">
+        <Text className="mx-2 mt-4 text-center font-normal text-[13px] leading-5 text-muted-foreground">
           The system permission prompt appears only after you tap Enable
           notifications.
         </Text>
@@ -170,11 +170,11 @@ function Benefit({
   return (
     <View className="flex-row gap-4 p-4">
       <View className="size-9 items-center justify-center rounded-xl bg-intelligence-soft">
-        <Text className="font-semibold text-xs text-intelligence-dark">{number}</Text>
+        <Text className="font-semibold text-xs text-accent">{number}</Text>
       </View>
       <View className="flex-1">
-        <Text className="font-semibold text-[15px] text-ink">{title}</Text>
-        <Text className="mt-1 font-normal text-sm leading-5 text-muted-ink">
+        <Text className="font-semibold text-[15px] text-foreground">{title}</Text>
+        <Text className="mt-1 font-normal text-sm leading-5 text-muted-foreground">
           {detail}
         </Text>
       </View>

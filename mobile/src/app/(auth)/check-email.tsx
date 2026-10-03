@@ -5,6 +5,7 @@ import { Text, View } from 'react-native';
 import { useAuth } from '../../auth/AuthProvider';
 import { formErrorMessage } from '../../auth/form-error';
 import { AuthScreen } from '../../components/auth/AuthScreen';
+import { AuthIcon } from '../../components/ui/AuthIcon';
 import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/ToastProvider';
 
@@ -36,28 +37,37 @@ export default function CheckEmailScreen() {
 
   return (
     <AuthScreen
-      description="Open the verification link on this device. The link is one-time and expires for your security."
+      appearance="auth"
+      description="Open the secure link we sent to your email address to finish setting up your account."
       onBack={() => router.back()}
       title="Check your inbox"
     >
-      <View className="gap-4">
-        <View className="rounded-2xl bg-paper px-4 py-3.5">
-          <Text className="text-[13px] font-normal leading-5 text-muted-ink/70">
-            Verification address
-          </Text>
-          <Text className="mt-1 text-[17px] font-medium text-ink">
-            {user?.email ?? 'Your account email'}
-          </Text>
+      <View className="gap-5">
+        <View className="flex-row items-center gap-3 border-b border-auth-line pb-4">
+          <View className="size-11 items-center justify-center rounded-xl bg-auth-surface">
+            <AuthIcon name="mail" size={21} />
+          </View>
+          <View className="flex-1">
+            <Text className="font-inter text-[13px] leading-5 text-auth-muted">
+              Verification address
+            </Text>
+            <Text className="mt-1 font-inter-medium text-[16px] text-auth-ink">
+              {user?.email ?? 'Your account email'}
+            </Text>
+          </View>
         </View>
         <Button
           label="Resend verification email"
           loading={sending}
+          icon={<AuthIcon color="#121510" name="mail" size={19} />}
           onPress={() => void resend()}
+          tone="auth"
           variant="secondary"
         />
         <Button
           label="Continue to setup"
           onPress={() => router.replace('/')}
+          tone="auth"
         />
       </View>
     </AuthScreen>

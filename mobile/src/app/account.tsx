@@ -5,7 +5,6 @@ import { Redirect, useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -23,9 +22,15 @@ import {
 } from '../auth/auth.schemas';
 import { formErrorMessage } from '../auth/form-error';
 import { shareAccountExport } from '../auth/share-account-export';
+import { AlertDialog } from '../components/ui/AlertDialog';
+import { AppleSwitch } from '../components/ui/AppleSwitch';
+import { AuthIcon } from '../components/ui/AuthIcon';
+import { OneUIHeader } from '../components/ui/OneUIHeader';
+import { SymbolIcon, type SymbolName } from '../components/ui/SymbolIcon';
 import { TextField } from '../components/ui/TextField';
 import { ToastViewport, useToast } from '../components/ui/ToastProvider';
 import { cn } from '../lib/cn';
+import { useAppTheme } from '../theme/theme-context';
 
 type BusyAction = 'verify' | 'refresh' | 'export' | 'logout' | 'logout-all';
 
@@ -41,9 +46,14 @@ export default function AccountScreen() {
     exportAccountData,
     deleteAccount,
   } = useAuth();
+  const { colors, isDark, setMode } = useAppTheme();
   const { showToast } = useToast();
   const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [logoutAllDialogOpen, setLogoutAllDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const {
     control,
@@ -72,37 +82,14 @@ export default function AccountScreen() {
   }
 
   function confirmLogoutAll() {
-    Alert.alert(
-      'Sign out everywhere?',
-      'Every Smart Reminder session will be revoked, including this device.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign out everywhere',
-          style: 'destructive',
-          onPress: () =>
-            void runAction('logout-all', async () => {
-              await logoutAll();
-            }),
-        },
-      ],
-    );
+    setLogoutAllDialogOpen(true);
   }
 
   const prepareDeletion = handleSubmit(
     ({ password }) => {
-      Alert.alert(
-        'Delete your account?',
-        'Your account will be disabled immediately and primary data scheduled for deletion. This cannot be undone.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete account',
-            style: 'destructive',
-            onPress: () => void performDeletion(password),
-          },
-        ],
-      );
+      setDeletePassword(password);
+      setDeleteOpen(false);
+      setTimeout(() => setDeleteConfirmOpen(true), 220);
     },
     (validationErrors) => {
       showToast({
@@ -130,6 +117,8 @@ export default function AccountScreen() {
         },
       });
     } catch (deletionError) {
+      setDeleteConfirmOpen(false);
+      setDeleteOpen(true);
       showToast({
         title: 'Couldn’t delete your account',
         message: formErrorMessage(deletionError),
@@ -149,68 +138,55 @@ export default function AccountScreen() {
   return (
     <>
       <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
-        <View className="h-12 flex-row items-center px-2">
-          <Pressable
-            accessibilityLabel="Back to Today"
-            accessibilityRole="button"
-            className="min-h-11 flex-row items-center px-2 active:opacity-60"
-            onPress={() => router.back()}
-          >
-            <Text className="mr-1 text-[32px] font-light leading-9 text-intelligence">
-              ‹
-            </Text>
-            <Text className="text-[17px] font-normal text-intelligence">Today</Text>
-          </Pressable>
-        </View>
-
         <ScrollView
           alwaysBounceVertical={false}
           className="flex-1"
           contentContainerClassName="pb-12"
           showsVerticalScrollIndicator={false}
         >
-          <View className="w-full max-w-[680px] self-center px-5">
-            <Text
-              accessibilityRole="header"
-              className="text-[34px] font-bold leading-[41px] text-ink"
-            >
-              Account
-            </Text>
+          <View className="w-full max-w-[680px] self-center">
+            <OneUIHeader
+              onBack={() => router.back()}
+              subtitle="Account, preferences, privacy, and active sessions."
+              title="Settings"
+            />
 
-            <View className="items-center pb-6 pt-7">
-              <View className="size-20 items-center justify-center rounded-full bg-intelligence">
-                <Text className="text-[30px] font-semibold uppercase text-white">
+            <View className="px-5">
+              <View className="flex-row items-center rounded-[20px] bg-paper p-4">
+                <View className="size-14 items-center justify-center rounded-[18px] bg-ink">
+                  <Text className="font-inter-bold text-[22px] uppercase text-kast-lime">
                   {user.email.slice(0, 1)}
-                </Text>
+                  </Text>
+                </View>
+                <View className="ml-4 min-w-0 flex-1">
+                  <Text className="font-inter-semibold text-[17px] text-foreground" numberOfLines={1}>
+                    {user.email}
+                  </Text>
+                  <View className="mt-1.5 flex-row items-center">
+                    <View
+                      className={cn(
+                        'mr-2 size-2 rounded-full',
+                        user.emailVerifiedAt ? 'bg-success' : 'bg-warning',
+                      )}
+                    />
+                    <Text
+                      className={cn(
+                        'font-inter-medium text-[13px]',
+                        user.emailVerifiedAt ? 'text-success' : 'text-warning',
+                      )}
+                    >
+                      {user.emailVerifiedAt ? 'Verified account' : 'Verification needed'}
+                    </Text>
+                  </View>
+                </View>
               </View>
-              <Text
-                className="mt-4 max-w-full text-center text-[20px] font-semibold text-ink"
-                numberOfLines={1}
-              >
-                {user.email}
-              </Text>
-              <View
-                className={cn(
-                  'mt-2 rounded-full px-3 py-1.5',
-                  user.emailVerifiedAt ? 'bg-success-soft' : 'bg-urgent-soft',
-                )}
-              >
-                <Text
-                  className={cn(
-                    'text-[13px] font-semibold',
-                    user.emailVerifiedAt ? 'text-success' : 'text-urgent',
-                  )}
-                >
-                  {user.emailVerifiedAt ? 'Email verified' : 'Email not verified'}
-                </Text>
-              </View>
-            </View>
 
             <SectionLabel>ACCOUNT</SectionLabel>
             <SettingsGroup>
               {!user.emailVerifiedAt ? (
                 <SettingsAction
                   description="Send a fresh verification link to your inbox"
+                  icon="check"
                   loading={busyAction === 'verify'}
                   onPress={() =>
                     void runAction('verify', async () => {
@@ -228,6 +204,7 @@ export default function AccountScreen() {
               <SettingsAction
                 description="Check for the latest verification and security details"
                 divider={!user.emailVerifiedAt}
+                icon="person"
                 loading={busyAction === 'refresh'}
                 onPress={() =>
                   void runAction('refresh', async () => {
@@ -245,14 +222,22 @@ export default function AccountScreen() {
 
             <SectionLabel>PREFERENCES</SectionLabel>
             <SettingsGroup>
+              <AppearanceToggle
+                iconColor={colors.accent}
+                isDark={isDark}
+                onValueChange={(enabled) => setMode(enabled ? 'dark' : 'light')}
+              />
               <SettingsAction
                 description="Manage quiet hours, privacy, permission, and signed-in devices"
+                divider
+                icon="notification"
                 onPress={() => router.push('/notification-settings')}
                 title="Notifications and devices"
               />
               <SettingsAction
                 description="Preview the impact before changing how reminder times display"
                 divider
+                icon="clock"
                 onPress={() => router.push('/timezone-settings')}
                 title="Timezone and schedule impact"
               />
@@ -262,6 +247,7 @@ export default function AccountScreen() {
             <SettingsGroup>
               <SettingsAction
                 description="Download a portable copy of your account data"
+                icon="history"
                 loading={busyAction === 'export'}
                 onPress={() =>
                   void runAction('export', async () => {
@@ -277,17 +263,15 @@ export default function AccountScreen() {
             <SettingsGroup>
               <SettingsAction
                 description="End only the session on this phone"
+                icon="back"
                 loading={busyAction === 'logout'}
-                onPress={() =>
-                  void runAction('logout', async () => {
-                    await logout();
-                  })
-                }
+                onPress={() => setLogoutDialogOpen(true)}
                 title="Sign out on this device"
               />
               <SettingsAction
                 description="Revoke access on every signed-in device"
                 divider
+                icon="settings"
                 loading={busyAction === 'logout-all'}
                 onPress={confirmLogoutAll}
                 title="Sign out everywhere"
@@ -299,14 +283,16 @@ export default function AccountScreen() {
             <SettingsGroup>
               <SettingsAction
                 description="Disable your account and schedule its data for deletion"
+                icon="delete"
                 onPress={() => setDeleteOpen(true)}
                 title="Delete account"
                 tone="destructive"
               />
             </SettingsGroup>
-            <Text className="px-4 pt-2 text-[13px] font-normal leading-[18px] text-muted-ink/60">
+            <Text className="px-4 pt-2 text-[13px] font-inter leading-[18px] text-muted-foreground/60">
               Deleting your account signs you out everywhere and cannot be undone.
             </Text>
+            </View>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -331,9 +317,9 @@ export default function AccountScreen() {
                 disabled={deleting}
                 onPress={closeDeleteModal}
               >
-                <Text className="text-[17px] font-normal text-intelligence">Cancel</Text>
+                <Text className="text-[17px] font-inter text-accent">Cancel</Text>
               </Pressable>
-              <Text className="text-[17px] font-semibold text-ink">Delete account</Text>
+              <Text className="text-[17px] font-inter-semibold text-foreground">Delete account</Text>
               <View className="w-[62px]" />
             </View>
 
@@ -343,15 +329,15 @@ export default function AccountScreen() {
             >
               <View className="w-full max-w-[520px] self-center">
                 <View className="size-16 items-center justify-center rounded-full bg-urgent-soft">
-                  <Text className="text-[30px] font-semibold text-urgent">!</Text>
+                  <Text className="text-[30px] font-inter-semibold text-urgent">!</Text>
                 </View>
                 <Text
                   accessibilityRole="header"
-                  className="mt-6 text-[30px] font-bold leading-[36px] text-ink"
+                  className="mt-6 text-[30px] font-inter-bold leading-[36px] text-foreground"
                 >
                   This action is permanent
                 </Text>
-                <Text className="mt-3 text-[16px] font-normal leading-6 text-muted-ink/80">
+                <Text className="mt-3 text-[16px] font-inter leading-6 text-muted-foreground/80">
                   Your account will be disabled immediately, every session will be
                   revoked, and your primary data will be scheduled for deletion.
                 </Text>
@@ -390,7 +376,7 @@ export default function AccountScreen() {
                   {deleting ? (
                     <ActivityIndicator color="#FFFFFF" />
                   ) : (
-                    <Text className="text-[17px] font-semibold text-white">
+                    <Text className="text-[17px] font-inter-semibold text-white">
                       Continue to delete account
                     </Text>
                   )}
@@ -400,26 +386,105 @@ export default function AccountScreen() {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
+
+      <AlertDialog
+        confirmLabel="Sign out"
+        loading={busyAction === 'logout'}
+        message="You’ll need to sign in again on this phone. Your reminders and account stay intact."
+        title="Sign out on this device?"
+        visible={logoutDialogOpen}
+        onCancel={() => setLogoutDialogOpen(false)}
+        onConfirm={() =>
+          void runAction('logout', async () => {
+            await logout();
+            setLogoutDialogOpen(false);
+          })
+        }
+      />
+
+      <AlertDialog
+        confirmLabel="Sign out everywhere"
+        loading={busyAction === 'logout-all'}
+        message="Every Smart Reminder session will be revoked, including this device."
+        title="Sign out everywhere?"
+        tone="destructive"
+        visible={logoutAllDialogOpen}
+        onCancel={() => setLogoutAllDialogOpen(false)}
+        onConfirm={() =>
+          void runAction('logout-all', async () => {
+            await logoutAll();
+            setLogoutAllDialogOpen(false);
+          })
+        }
+      />
+
+      <AlertDialog
+        confirmLabel="Delete account"
+        loading={deleting}
+        message="Your account will be disabled immediately and primary data scheduled for deletion. This cannot be undone."
+        title="Delete your account?"
+        tone="destructive"
+        visible={deleteConfirmOpen}
+        onCancel={() => {
+          setDeleteConfirmOpen(false);
+          setDeleteOpen(true);
+        }}
+        onConfirm={() => void performDeletion(deletePassword)}
+      />
     </>
+  );
+}
+
+function AppearanceToggle({
+  iconColor,
+  isDark,
+  onValueChange,
+}: {
+  iconColor: string;
+  isDark: boolean;
+  onValueChange: (value: boolean) => void;
+}) {
+  return (
+    <View className="min-h-[76px] flex-row items-center px-4 py-3">
+      <View className="size-10 items-center justify-center rounded-[12px] bg-secondary-fill">
+        <AuthIcon color={iconColor} name={isDark ? 'moon' : 'sun'} size={19} />
+      </View>
+      <View className="ml-4 flex-1 pr-3">
+        <Text className="text-[16px] font-inter-medium text-foreground">Dark appearance</Text>
+        <Text className="mt-0.5 text-[13px] font-inter leading-[18px] text-muted-foreground/60">
+          {isDark ? 'Dark theme is active' : 'Light theme is active'}
+        </Text>
+      </View>
+      <AppleSwitch
+        label="Use dark appearance"
+        value={isDark}
+        onValueChange={onValueChange}
+      />
+    </View>
   );
 }
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <Text className="mb-2 ml-4 mt-5 text-[13px] font-medium text-muted-ink/60">
+    <Text className="mb-2 ml-3 mt-7 font-inter-semibold text-[12px] text-muted-foreground">
       {children}
     </Text>
   );
 }
 
 function SettingsGroup({ children }: { children: ReactNode }) {
-  return <View className="overflow-hidden rounded-2xl bg-paper">{children}</View>;
+  return (
+    <View className="overflow-hidden rounded-[18px] bg-paper">
+      {children}
+    </View>
+  );
 }
 
 function SettingsAction({
   title,
   description,
   onPress,
+  icon,
   divider = false,
   loading = false,
   tone = 'default',
@@ -427,47 +492,59 @@ function SettingsAction({
   title: string;
   description: string;
   onPress: () => void;
+  icon: SymbolName;
   divider?: boolean;
   loading?: boolean;
   tone?: 'default' | 'destructive';
 }) {
+  const { colors } = useAppTheme();
+
   return (
     <Pressable
       accessibilityHint={description}
       accessibilityRole="button"
       accessibilityState={{ disabled: loading, busy: loading }}
       className={cn(
-        'min-h-[68px] justify-center px-4 py-3 active:bg-canvas',
-        divider && 'border-t border-taupe/50',
+        'min-h-[72px] justify-center px-4 py-3 active:bg-canvas',
+        divider && 'border-t border-secondary-fill',
       )}
       disabled={loading}
       onPress={onPress}
     >
       <View className="flex-row items-center gap-4">
+        <View
+          className={cn(
+            'size-10 items-center justify-center rounded-[12px]',
+            tone === 'destructive' ? 'bg-urgent-soft' : 'bg-secondary-fill',
+          )}
+        >
+          <SymbolIcon
+            className={tone === 'destructive' ? 'text-urgent' : 'text-foreground'}
+            name={icon}
+            size={19}
+          />
+        </View>
         <View className="flex-1">
           <Text
             className={cn(
-              'text-[16px] font-medium',
-              tone === 'destructive' ? 'text-urgent' : 'text-ink',
+              'text-[16px] font-inter-medium',
+              tone === 'destructive' ? 'text-urgent' : 'text-foreground',
             )}
           >
             {title}
           </Text>
-          <Text className="mt-0.5 text-[13px] font-normal leading-[18px] text-muted-ink/60">
+          <Text className="mt-0.5 text-[13px] font-inter leading-[18px] text-muted-foreground/60">
             {description}
           </Text>
         </View>
         {loading ? (
-          <ActivityIndicator color={tone === 'destructive' ? '#FF3B30' : '#007AFF'} />
+          <ActivityIndicator color={tone === 'destructive' ? '#B94A42' : colors.accent} />
         ) : (
-          <Text
-            className={cn(
-              'text-[24px] font-light',
-              tone === 'destructive' ? 'text-urgent' : 'text-subtle-ink',
-            )}
-          >
-            ›
-          </Text>
+          <SymbolIcon
+            className={tone === 'destructive' ? 'text-urgent' : 'text-subtle-foreground'}
+            name="chevron"
+            size={22}
+          />
         )}
       </View>
     </Pressable>

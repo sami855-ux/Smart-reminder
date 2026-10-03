@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
@@ -29,7 +29,7 @@
       [
         "expo-notifications",
         {
-          "defaultChannel": "reminders",
+          "defaultChannel": "reminders-v3-default-standard",
           "color": "#343431"
         }
       ],

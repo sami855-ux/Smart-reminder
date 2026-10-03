@@ -4,9 +4,15 @@ type TextLinkProps = {
   label: string;
   onPress: () => void;
   accessibilityHint?: string;
+  tone?: 'light' | 'auth';
 };
 
-export function TextLink({ label, onPress, accessibilityHint }: TextLinkProps) {
+export function TextLink({
+  label,
+  onPress,
+  accessibilityHint,
+  tone = 'light',
+}: TextLinkProps) {
   return (
     <Pressable
       accessibilityHint={accessibilityHint}
@@ -14,7 +20,13 @@ export function TextLink({ label, onPress, accessibilityHint }: TextLinkProps) {
       className="min-h-11 justify-center self-start active:opacity-70"
       onPress={onPress}
     >
-      <Text className="text-[15px] font-medium text-intelligence">
+      <Text
+        className={
+          tone === 'auth'
+            ? 'font-inter-medium text-[14px] text-auth-accent'
+            : 'text-[15px] font-medium text-accent'
+        }
+      >
         {label}
       </Text>
     </Pressable>

@@ -1,21 +1,55 @@
 import { Platform } from 'react-native';
 
+import { queryClient } from '../../api/query-client';
 import { getInstallationId } from '../../device/device-installation';
 import {
   notificationAttemptKey,
   reportNotificationAttempt,
 } from '../../device/notification-attempt.api';
-import { getNotificationPreferences } from '../../preferences/preferences.api';
+import {
+  getNotificationPreferences,
+  notificationPreferencesQueryKey,
+  type NotificationPreferences,
+} from '../../preferences/preferences.api';
 import {
   getNudgePolicy,
   getReminder,
   listReminderOccurrences,
 } from '../../reminders/reminder.api';
-import type { ReminderDetail } from '../../reminders/reminder.schemas';
+import { reminderCachePolicy, reminderQueryKeys } from '../../reminders/reminder.queries';
+import type { NudgePolicy, ReminderDetail } from '../../reminders/reminder.schemas';
 import { loadNotificationsModule } from './notification-runtime';
+import {
+  getNotificationAlertPreferences,
+  notificationAlertPreferencesQueryKey,
+  notificationChannelId,
+  notificationVibrationPattern,
+  type NotificationAlertPreferences,
+} from './notification-alert-preferences';
 
 type NotificationsModule = NonNullable<Awaited<ReturnType<typeof loadNotificationsModule>>>;
 type Occurrence = ReminderDetail['occurrences'][number];
+type ReminderSchedulingOptions = {
+  notificationPreferences?: NotificationPreferences | null;
+  nudgePolicy?: NudgePolicy | null;
+  alertPreferences?: NotificationAlertPreferences;
+};
+
+const NATIVE_SCHEDULING_CONCURRENCY = 4;
+const REMINDER_RECONCILIATION_CONCURRENCY = 2;
+const RECONCILIATION_COOLDOWN_MS = 5 * 60_000;
+
+const schedulingTasks = new Map<string, Promise<ReminderSchedulingResult>>();
+let notificationSetupKey: string | null = null;
+let notificationSetupTask: Promise<void> | null = null;
+let reconciliationTask: Promise<ReconciliationResult> | null = null;
+let lastReconciliationAt = 0;
+let lastReconciliationResult: ReconciliationResult = { reminders: 0, scheduled: 0 };
+
+type ReconciliationResult = {
+  reminders: number;
+  scheduled: number;
+};
 
 export const REMINDER_NOTIFICATION_CATEGORY = 'reminder_actions';
 export const COMPLETE_NOTIFICATION_ACTION = 'complete_reminder';
@@ -27,77 +61,106 @@ export type ReminderSchedulingResult =
   | { status: 'unavailable'; count: 0 }
   | { status: 'failed'; count: number };
 
-export async function scheduleReminderNotifications(
+export function scheduleReminderNotifications(
   reminder: ReminderDetail,
+  options: ReminderSchedulingOptions = {},
+): Promise<ReminderSchedulingResult> {
+  const taskKey = `${reminder.id}:${reminder.schedule.revision}:${reminder.updatedAt}`;
+  const existing = schedulingTasks.get(taskKey);
+  if (existing) return existing;
+
+  const task = scheduleReminderNotificationsInternal(reminder, options);
+  schedulingTasks.set(taskKey, task);
+  void task
+    .finally(() => {
+      if (schedulingTasks.get(taskKey) === task) schedulingTasks.delete(taskKey);
+    })
+    .catch(() => undefined);
+  return task;
+}
+
+async function scheduleReminderNotificationsInternal(
+  reminder: ReminderDetail,
+  options: ReminderSchedulingOptions,
 ): Promise<ReminderSchedulingResult> {
   const notifications = await loadNotificationsModule();
   if (!notifications) return { status: 'unavailable', count: 0 };
 
   try {
     const installationId = await getInstallationId();
-    const [preferences, nudgePolicy] = await Promise.all([
-      getNotificationPreferences().catch(() => null),
-      getNudgePolicy(reminder.id).catch(() => null),
+    const [preferences, nudgePolicy, alertPreferences] = await Promise.all([
+      options.notificationPreferences !== undefined
+        ? options.notificationPreferences
+        : getCachedNotificationPreferences().catch(() => null),
+      options.nudgePolicy !== undefined
+        ? options.nudgePolicy
+        : getCachedNudgePolicy(reminder.id).catch(() => null),
+      options.alertPreferences ?? getCachedNotificationAlertPreferences(),
     ]);
-    configureNotificationHandler(notifications);
-    await ensureAndroidChannel(notifications);
-    await ensureReminderNotificationCategory(notifications);
+    await ensureNotificationSetup(notifications, alertPreferences);
 
     if (preferences?.globallyPaused) {
       await cancelReminderNotifications(reminder);
       return { status: 'paused', count: 0 };
     }
 
-    let scheduled = 0;
-    let failed = 0;
-    for (const occurrence of reminder.occurrences) {
-      const identifiers = notificationIdentifiers(occurrence);
-      if (
-        occurrence.lifecycle !== 'SCHEDULED' ||
-        new Date(occurrence.effectiveScheduledAt).getTime() <= Date.now()
-      ) {
+    const results = await mapWithConcurrency(
+      reminder.occurrences,
+      NATIVE_SCHEDULING_CONCURRENCY,
+      async (occurrence) => {
+        const identifiers = notificationIdentifiers(occurrence);
+        if (
+          occurrence.lifecycle !== 'SCHEDULED' ||
+          new Date(occurrence.effectiveScheduledAt).getTime() <= Date.now()
+        ) {
+          await cancelIdentifiers(notifications, identifiers);
+          return { scheduled: 0, failed: 0 };
+        }
+
         await cancelIdentifiers(notifications, identifiers);
-        continue;
-      }
-
-      await cancelIdentifiers(notifications, identifiers);
-      const baseResult = await scheduleOne({
-        notifications,
-        installationId,
-        reminder,
-        occurrence,
-        nudgeStep: 0,
-        date: applyQuietHours(new Date(occurrence.effectiveScheduledAt), preferences),
-        identifier: identifiers.base,
-        title: notificationTitle(reminder, preferences?.lockScreenPrivacy),
-        body: notificationBody(reminder, preferences?.lockScreenPrivacy),
-      });
-      scheduled += baseResult ? 1 : 0;
-      failed += baseResult ? 0 : 1;
-
-      if (nudgePolicy?.enabled && nudgePolicy.intervalMinutes) {
-        const nudgeAt = new Date(
-          new Date(occurrence.effectiveScheduledAt).getTime() +
-            nudgePolicy.intervalMinutes * 60_000,
-        );
-        const nudgeResult = await scheduleOne({
+        const baseResult = await scheduleOne({
           notifications,
           installationId,
           reminder,
           occurrence,
-          nudgeStep: 1,
-          date: applyQuietHours(nudgeAt, preferences),
-          identifier: identifiers.nudge,
-          title:
-            preferences?.lockScreenPrivacy === 'PRIVATE'
-              ? 'Smart Reminder'
-              : `Still pending: ${reminder.title}`,
+          nudgeStep: 0,
+          date: applyQuietHours(new Date(occurrence.effectiveScheduledAt), preferences),
+          identifier: identifiers.base,
+          title: notificationTitle(reminder, preferences?.lockScreenPrivacy),
           body: notificationBody(reminder, preferences?.lockScreenPrivacy),
+          alertPreferences,
         });
-        scheduled += nudgeResult ? 1 : 0;
-        failed += nudgeResult ? 0 : 1;
-      }
-    }
+        let scheduled = baseResult ? 1 : 0;
+        let failed = baseResult ? 0 : 1;
+
+        if (nudgePolicy?.enabled && nudgePolicy.intervalMinutes) {
+          const nudgeAt = new Date(
+            new Date(occurrence.effectiveScheduledAt).getTime() +
+              nudgePolicy.intervalMinutes * 60_000,
+          );
+          const nudgeResult = await scheduleOne({
+            notifications,
+            installationId,
+            reminder,
+            occurrence,
+            nudgeStep: 1,
+            date: applyQuietHours(nudgeAt, preferences),
+            identifier: identifiers.nudge,
+            title:
+              preferences?.lockScreenPrivacy === 'PRIVATE'
+                ? 'Smart Reminder'
+                : `Still pending: ${reminder.title}`,
+            body: notificationBody(reminder, preferences?.lockScreenPrivacy),
+            alertPreferences,
+          });
+          scheduled += nudgeResult ? 1 : 0;
+          failed += nudgeResult ? 0 : 1;
+        }
+        return { scheduled, failed };
+      },
+    );
+    const scheduled = results.reduce((total, result) => total + result.scheduled, 0);
+    const failed = results.reduce((total, result) => total + result.failed, 0);
 
     return failed > 0
       ? { status: 'failed', count: scheduled }
@@ -113,32 +176,55 @@ export async function cancelReminderNotifications(
   const notifications = await loadNotificationsModule();
   if (!notifications) return;
   const installationId = await getInstallationId();
-  await Promise.all(
-    reminder.occurrences.flatMap((occurrence) => {
+  await mapWithConcurrency(
+    reminder.occurrences,
+    NATIVE_SCHEDULING_CONCURRENCY,
+    async (occurrence) => {
       const identifiers = notificationIdentifiers(occurrence);
-      return ([0, 1] as const).map(async (nudgeStep) => {
-        const identifier = nudgeStep === 0 ? identifiers.base : identifiers.nudge;
-        await notifications.cancelScheduledNotificationAsync(identifier).catch(() => undefined);
-        void reportNotificationAttempt(
-          {
-            occurrenceId: occurrence.id,
-            deviceInstallationId: installationId,
-            scheduleRevision: occurrence.scheduleRevision,
-            effectiveScheduledAt: occurrence.effectiveScheduledAt,
-            nudgeStep,
-            outcome: 'CANCELLED',
-          },
-          notificationAttemptKey(occurrence.id, 'CANCELLED', nudgeStep),
-        ).catch(() => undefined);
-      });
-    }),
+      await Promise.all(
+        ([0, 1] as const).map(async (nudgeStep) => {
+          const identifier = nudgeStep === 0 ? identifiers.base : identifiers.nudge;
+          await notifications.cancelScheduledNotificationAsync(identifier).catch(() => undefined);
+          void reportNotificationAttempt(
+            {
+              occurrenceId: occurrence.id,
+              deviceInstallationId: installationId,
+              scheduleRevision: occurrence.scheduleRevision,
+              effectiveScheduledAt: occurrence.effectiveScheduledAt,
+              nudgeStep,
+              outcome: 'CANCELLED',
+            },
+            notificationAttemptKey(occurrence.id, 'CANCELLED', nudgeStep),
+          ).catch(() => undefined);
+        }),
+      );
+    },
   );
 }
 
-export async function reconcileReminderNotifications(): Promise<{
-  reminders: number;
-  scheduled: number;
-}> {
+export function reconcileReminderNotifications(
+  options: { force?: boolean } = {},
+): Promise<ReconciliationResult> {
+  if (reconciliationTask) return reconciliationTask;
+  if (!options.force && Date.now() - lastReconciliationAt < RECONCILIATION_COOLDOWN_MS) {
+    return Promise.resolve(lastReconciliationResult);
+  }
+
+  const task = reconcileReminderNotificationsInternal();
+  reconciliationTask = task;
+  void task
+    .then((result) => {
+      lastReconciliationAt = Date.now();
+      lastReconciliationResult = result;
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      if (reconciliationTask === task) reconciliationTask = null;
+    });
+  return task;
+}
+
+async function reconcileReminderNotificationsInternal(): Promise<ReconciliationResult> {
   const from = new Date();
   from.setDate(from.getDate() - 90);
   const to = new Date();
@@ -157,12 +243,22 @@ export async function reconcileReminderNotifications(): Promise<{
     if (!page.nextCursor) break;
     cursor = page.nextCursor;
   }
-  let scheduled = 0;
-  for (const reminderId of reminderIds) {
-    const reminder = await getReminder(reminderId);
-    const result = await scheduleReminderNotifications(reminder);
-    scheduled += result.count;
-  }
+  const [notificationPreferences, alertPreferences] = await Promise.all([
+    getCachedNotificationPreferences().catch(() => null),
+    getCachedNotificationAlertPreferences(),
+  ]);
+  const results = await mapWithConcurrency(
+    [...reminderIds],
+    REMINDER_RECONCILIATION_CONCURRENCY,
+    async (reminderId) => {
+      const reminder = await getReminder(reminderId);
+      return scheduleReminderNotifications(reminder, {
+        notificationPreferences,
+        alertPreferences,
+      });
+    },
+  );
+  const scheduled = results.reduce((total, result) => total + result.count, 0);
   return { reminders: reminderIds.size, scheduled };
 }
 
@@ -176,6 +272,7 @@ async function scheduleOne({
   identifier,
   title,
   body,
+  alertPreferences,
 }: {
   notifications: NotificationsModule;
   installationId: string;
@@ -186,6 +283,7 @@ async function scheduleOne({
   identifier: string;
   title: string;
   body: string;
+  alertPreferences: NotificationAlertPreferences;
 }): Promise<boolean> {
   try {
     await notifications.scheduleNotificationAsync({
@@ -193,21 +291,34 @@ async function scheduleOne({
       content: {
         title,
         body,
-        sound: 'default',
+        sound: alertPreferences.sound === 'SILENT' ? false : 'default',
         categoryIdentifier: REMINDER_NOTIFICATION_CATEGORY,
+        ...(Platform.OS === 'android' && alertPreferences.alertStyle === 'ALARM'
+          ? { priority: notifications.AndroidNotificationPriority.MAX }
+          : {}),
+        ...(Platform.OS === 'ios' && alertPreferences.alertStyle === 'ALARM'
+          ? { interruptionLevel: 'timeSensitive' as const }
+          : {}),
         data: {
-          url: `/reminders/${reminder.id}?occurrenceId=${occurrence.id}`,
+          url:
+            alertPreferences.alertStyle === 'ALARM'
+              ? `/alarm/${occurrence.id}?reminderId=${reminder.id}`
+              : `/reminders/${reminder.id}?occurrenceId=${occurrence.id}`,
+          detailUrl: `/reminders/${reminder.id}?occurrenceId=${occurrence.id}`,
           reminderId: reminder.id,
           occurrenceId: occurrence.id,
           scheduleRevision: occurrence.scheduleRevision,
           effectiveScheduledAt: occurrence.effectiveScheduledAt,
           nudgeStep,
+          alertStyle: alertPreferences.alertStyle,
         },
       },
       trigger: {
         type: notifications.SchedulableTriggerInputTypes.DATE,
         date,
-        ...(Platform.OS === 'android' ? { channelId: 'reminders' } : {}),
+        ...(Platform.OS === 'android'
+          ? { channelId: notificationChannelId(alertPreferences) }
+          : {}),
       },
     });
     void reportNotificationAttempt(
@@ -240,10 +351,90 @@ async function scheduleOne({
   }
 }
 
-function configureNotificationHandler(notifications: NotificationsModule) {
+function getCachedNotificationPreferences(): Promise<NotificationPreferences> {
+  return queryClient.fetchQuery({
+    queryKey: notificationPreferencesQueryKey,
+    queryFn: getNotificationPreferences,
+    staleTime: reminderCachePolicy.staleTime,
+  });
+}
+
+function getCachedNudgePolicy(reminderId: string): Promise<NudgePolicy> {
+  return queryClient.fetchQuery({
+    queryKey: reminderQueryKeys.nudgePolicy(reminderId),
+    queryFn: () => getNudgePolicy(reminderId),
+    staleTime: reminderCachePolicy.staleTime,
+  });
+}
+
+function getCachedNotificationAlertPreferences(): Promise<NotificationAlertPreferences> {
+  return queryClient.fetchQuery({
+    queryKey: notificationAlertPreferencesQueryKey,
+    queryFn: getNotificationAlertPreferences,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+async function ensureNotificationSetup(
+  notifications: NotificationsModule,
+  preferences: NotificationAlertPreferences,
+): Promise<void> {
+  configureNotificationHandler(notifications, preferences);
+  const setupKey = [
+    Platform.OS,
+    preferences.sound,
+    preferences.vibration,
+    preferences.alertStyle,
+  ].join(':');
+  if (notificationSetupKey === setupKey && notificationSetupTask) {
+    return notificationSetupTask;
+  }
+
+  notificationSetupKey = setupKey;
+  const task = Promise.all([
+    ensureAndroidChannel(notifications, preferences),
+    ensureReminderNotificationCategory(notifications),
+  ]).then(() => undefined);
+  notificationSetupTask = task;
+  try {
+    await task;
+  } catch (error) {
+    if (notificationSetupTask === task) {
+      notificationSetupKey = null;
+      notificationSetupTask = null;
+    }
+    throw error;
+  }
+}
+
+async function mapWithConcurrency<Input, Output>(
+  items: readonly Input[],
+  concurrency: number,
+  operation: (item: Input) => Promise<Output>,
+): Promise<Output[]> {
+  const results = new Array<Output>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await operation(items[index]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+function configureNotificationHandler(
+  notifications: NotificationsModule,
+  preferences: NotificationAlertPreferences,
+) {
   notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldPlaySound: true,
+      shouldPlaySound: preferences.sound !== 'SILENT',
       shouldSetBadge: false,
       shouldShowBanner: true,
       shouldShowList: true,
@@ -251,14 +442,47 @@ function configureNotificationHandler(notifications: NotificationsModule) {
   });
 }
 
-async function ensureAndroidChannel(notifications: NotificationsModule) {
+async function ensureAndroidChannel(
+  notifications: NotificationsModule,
+  preferences: NotificationAlertPreferences,
+) {
   if (Platform.OS !== 'android') return;
-  await notifications.setNotificationChannelAsync('reminders', {
-    name: 'Reminders',
+  const pattern = notificationVibrationPattern(preferences.vibration);
+  await notifications.setNotificationChannelAsync(notificationChannelId(preferences), {
+    name: `Reminders · ${soundLabel(preferences)} · ${vibrationLabel(preferences)}`,
     description: 'Alerts for reminders you create in Smart Reminder.',
-    importance: notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 250, 150, 250],
+    enableVibrate: preferences.vibration !== 'OFF',
+    importance: notifications.AndroidImportance.MAX,
+    sound: preferences.sound === 'SILENT' ? null : 'default',
+    ...(pattern ? { vibrationPattern: pattern } : {}),
   });
+}
+
+export async function prepareSelectedNotificationChannel(): Promise<string | null> {
+  const notifications = await loadNotificationsModule();
+  if (!notifications) return null;
+  const preferences = await getNotificationAlertPreferences();
+  configureNotificationHandler(notifications, preferences);
+  await ensureAndroidChannel(notifications, preferences);
+  return Platform.OS === 'android' ? notificationChannelId(preferences) : null;
+}
+
+function soundLabel(preferences: NotificationAlertPreferences) {
+  return preferences.sound === 'SILENT' ? 'Silent' : 'Sound';
+}
+
+function vibrationLabel(preferences: NotificationAlertPreferences) {
+  switch (preferences.vibration) {
+    case 'OFF':
+      return 'No vibration';
+    case 'SHORT':
+      return 'Short vibration';
+    case 'STRONG':
+      return 'Strong vibration';
+    case 'STANDARD':
+    default:
+      return 'Standard vibration';
+  }
 }
 
 async function ensureReminderNotificationCategory(notifications: NotificationsModule) {

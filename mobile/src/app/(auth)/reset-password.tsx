@@ -51,17 +51,18 @@ export default function ResetPasswordScreen() {
 
   return (
     <AuthScreen
-      description="Choose a new password for your Smart Reminder account."
+      appearance="auth"
+      description="Choose a strong, unique password for your Smart Reminder account."
       onBack={() => router.back()}
-      title="Create a new password"
+      title="Choose a new password"
     >
       <View className="gap-5">
         {!tokenResult.success ? (
-          <View className="rounded-2xl bg-urgent-soft p-4">
-            <Text className="text-[17px] font-semibold text-ink">
+          <View className="border-l-2 border-urgent pl-4">
+            <Text className="font-inter-semibold text-[16px] text-auth-ink">
               This link can’t be used
             </Text>
-            <Text className="mt-1 text-[15px] font-normal leading-5 text-muted-ink/80">
+            <Text className="mt-1 font-inter text-[14px] leading-5 text-auth-muted">
               It may be incomplete or expired. Request a new password reset
               link and try again.
             </Text>
@@ -78,11 +79,13 @@ export default function ResetPasswordScreen() {
                   autoCapitalize="none"
                   autoComplete="new-password"
                   error={fieldState.error?.message}
+                  icon="key"
                   label="New password"
                   onBlur={onBlur}
                   onChangeText={onChange}
                   secureTextEntry
                   textContentType="newPassword"
+                  tone="auth"
                   value={value}
                 />
               )}
@@ -95,6 +98,7 @@ export default function ResetPasswordScreen() {
                   autoCapitalize="none"
                   autoComplete="new-password"
                   error={fieldState.error?.message}
+                  icon="check"
                   label="Confirm new password"
                   onBlur={onBlur}
                   onChangeText={onChange}
@@ -102,6 +106,7 @@ export default function ResetPasswordScreen() {
                   returnKeyType="done"
                   secureTextEntry
                   textContentType="newPassword"
+                  tone="auth"
                   value={value}
                 />
               )}
@@ -110,12 +115,14 @@ export default function ResetPasswordScreen() {
               label="Update password"
               loading={isSubmitting}
               onPress={() => void submit()}
+              tone="auth"
             />
           </>
         ) : (
           <Button
             label="Request a new link"
             onPress={() => router.replace('/(auth)/forgot-password')}
+            tone="auth"
           />
         )}
       </View>

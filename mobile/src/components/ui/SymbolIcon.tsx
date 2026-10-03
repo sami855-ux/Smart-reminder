@@ -63,7 +63,7 @@ export function SymbolIcon({
   return (
     <Text
       accessibilityElementsHidden
-      className={cn('font-semibold text-ink', className)}
+      className={cn('font-inter-semibold text-foreground', className)}
       importantForAccessibility="no-hide-descendants"
       style={style}
     >

@@ -1,7 +1,4 @@
 import { useMemo, useRef, useState } from 'react';
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Redirect, useRouter } from 'expo-router';
 import {
@@ -18,6 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { formErrorMessage } from '../auth/form-error';
 import { Button } from '../components/ui/Button';
+import { DateTimePickerSheet } from '../components/ui/DateTimePickerSheet';
+import { SymbolIcon, type SymbolName } from '../components/ui/SymbolIcon';
 import { TextField } from '../components/ui/TextField';
 import { useToast } from '../components/ui/ToastProvider';
 import { cn } from '../lib/cn';
@@ -27,15 +26,18 @@ import { scheduleReminderNotifications } from '../platform/notifications/reminde
 import {
   createIdempotencyKey,
   createReminder,
-  getReminder,
   parseReminder,
   previewReminder,
   type ReminderContentInput,
 } from '../reminders/reminder.api';
+import { reminderQueryKeys } from '../reminders/reminder.queries';
 import type {
+  CreatedReminder,
+  OccurrenceListItem,
   ReminderPreview,
   ReminderScheduleInput,
 } from '../reminders/reminder.schemas';
+import { useAppTheme } from '../theme/theme-context';
 
 type CaptureMode = 'natural' | 'manual';
 type PickerMode = 'date' | 'time' | 'end-date' | null;
@@ -51,12 +53,13 @@ const recurrenceOptions: { type: ScheduleType; label: string }[] = [
 const weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 export default function CreateReminderScreen() {
+  const { colors } = useAppTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { status } = useAuth();
   const { state } = useOnboarding();
   const { showToast } = useToast();
-  const initialDate = useMemo(() => tomorrowAtNine(), []);
+  const initialDate = useMemo(() => currentDateAndTime(), []);
   const idempotencyKey = useRef(createIdempotencyKey('create'));
   const [captureMode, setCaptureMode] = useState<CaptureMode>('natural');
   const [naturalText, setNaturalText] = useState('');
@@ -69,6 +72,7 @@ export default function CreateReminderScreen() {
   const [dateTime, setDateTime] = useState(initialDate);
   const [endDate, setEndDate] = useState(() => addDays(initialDate, 30));
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
+  const [pickerDraft, setPickerDraft] = useState(initialDate);
   const [preview, setPreview] = useState<ReminderPreview | null>(null);
   const [parserMessages, setParserMessages] = useState<string[]>([]);
   const [inferred, setInferred] = useState<Set<string>>(() => new Set());
@@ -76,16 +80,8 @@ export default function CreateReminderScreen() {
   const previewMutation = useMutation({ mutationFn: previewReminder });
   const parseMutation = useMutation({ mutationFn: parseReminder });
   const createMutation = useMutation({
-    mutationFn: async (input: ReminderContentInput & { confirmedResolvedAt: string }) => {
-      const created = await createReminder(input, idempotencyKey.current);
-      const detail = await getReminder(created.id);
-      const scheduling = notificationPermissionAllowsAlerts(
-        state.notificationPermission,
-      )
-        ? await scheduleReminderNotifications(detail)
-        : { status: 'unavailable' as const, count: 0 as const };
-      return { created, scheduling };
-    },
+    mutationFn: (input: ReminderContentInput & { confirmedResolvedAt: string }) =>
+      createReminder(input, idempotencyKey.current),
   });
 
   if (status !== 'authenticated') return <Redirect href="/" />;
@@ -246,28 +242,53 @@ export default function CreateReminderScreen() {
     const input = buildInput();
     if (!input || !preview) return;
     try {
-      const result = await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         ...input,
         confirmedResolvedAt: preview.schedule.resolvedAt,
       });
-      await queryClient.invalidateQueries({ queryKey: ['reminder-occurrences'] });
+      queryClient.setQueryData(reminderQueryKeys.detail(created.id), created);
+      queryClient.setQueriesData<{
+        items: OccurrenceListItem[];
+        nextCursor: string | null;
+      }>(
+        { queryKey: reminderQueryKeys.occurrenceLists() },
+        (current) => addCreatedOccurrences(current, created),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: reminderQueryKeys.occurrenceLists(),
+        refetchType: 'none',
+      });
       showToast({
         title: 'Reminder created',
         message:
-          result.scheduling.status === 'scheduled'
-            ? `${result.scheduling.count} local notification${result.scheduling.count === 1 ? '' : 's'} scheduled.`
-            : result.scheduling.status === 'paused'
-              ? 'Saved to your account. Notifications are currently paused.'
-            : result.scheduling.status === 'unavailable'
-              ? 'Saved to your account. Use a development build to schedule device alerts.'
-              : 'Saved to your account, but device scheduling needs attention.',
-        tone: result.scheduling.status === 'failed' ? 'info' : 'success',
-        duration: 6500,
+          notificationPermissionAllowsAlerts(state.notificationPermission)
+            ? 'Saved. Device alerts are syncing in the background.'
+            : 'Saved. Enable notifications when you want device alerts.',
+        tone: 'success',
       });
       router.replace({
         pathname: '/reminders/[reminderId]',
-        params: { reminderId: result.created.id },
+        params: { reminderId: created.id },
       });
+
+      if (notificationPermissionAllowsAlerts(state.notificationPermission)) {
+        void scheduleReminderNotifications(created, { nudgePolicy: null })
+          .then((scheduling) => {
+            if (scheduling.status !== 'failed') return;
+            showToast({
+              title: 'Reminder saved',
+              message: 'Device alerts will be retried the next time the app syncs.',
+              tone: 'info',
+            });
+          })
+          .catch(() => {
+            showToast({
+              title: 'Reminder saved',
+              message: 'Device alerts will be retried the next time the app syncs.',
+              tone: 'info',
+            });
+          });
+      }
     } catch (error) {
       showToast({
         title: 'Couldn’t create the reminder',
@@ -277,31 +298,40 @@ export default function CreateReminderScreen() {
     }
   }
 
-  function handlePickerChange(event: DateTimePickerEvent, selected?: Date) {
-    if (Platform.OS === 'android') setPickerMode(null);
-    if (event.type !== 'set' || !selected) return;
+  function openPicker(mode: Exclude<PickerMode, null>) {
+    setPickerDraft(mode === 'end-date' ? endDate : dateTime);
+    setPickerMode(mode);
+  }
+
+  function applyPickerSelection() {
+    if (!pickerMode) return;
     if (pickerMode === 'end-date') {
-      setEndDate(selected);
+      setEndDate(mergeDate(endDate, pickerDraft));
       invalidatePreview();
-      return;
-    }
-    const next = new Date(dateTime);
-    if (pickerMode === 'date') {
-      next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
     } else {
-      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      const next =
+        pickerMode === 'date'
+          ? mergeDate(dateTime, pickerDraft)
+          : mergeTime(dateTime, pickerDraft);
+      setDateTime(next);
+      if (pickerMode === 'date' && endDate < next) {
+        setEndDate(addDays(next, 30));
+      }
+      markEdited(pickerMode);
+      invalidatePreview();
     }
-    setDateTime(next);
-    markEdited(pickerMode === 'date' ? 'date' : 'time');
-    invalidatePreview();
+    setPickerMode(null);
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-canvas" edges={['bottom']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1"
       >
+        <View className="items-center pb-1 pt-2">
+          <View className="h-1 w-10 rounded-full bg-taupe" />
+        </View>
         <View className="h-14 flex-row items-center justify-between px-4">
           <Pressable
             accessibilityLabel="Close reminder creation"
@@ -309,9 +339,9 @@ export default function CreateReminderScreen() {
             className="size-11 items-center justify-center rounded-full active:bg-secondary-fill"
             onPress={() => router.back()}
           >
-            <Text className="text-[28px] font-light text-ink">×</Text>
+            <Text className="text-[28px] font-inter text-foreground">×</Text>
           </Pressable>
-          <Text className="text-[15px] font-semibold text-muted-ink">NEW REMINDER</Text>
+          <Text className="font-display-semibold text-[17px] text-foreground">Add reminder</Text>
           <View className="size-11" />
         </View>
 
@@ -324,29 +354,29 @@ export default function CreateReminderScreen() {
           <View className="w-full max-w-[680px] self-center px-5">
             <Text
               accessibilityRole="header"
-              className="mt-2 text-[36px] font-bold leading-[42px] tracking-[-1px] text-ink"
+              className="mt-2 font-inter-bold text-[32px] leading-[38px] text-foreground"
             >
               What should stay on your radar?
             </Text>
-            <Text className="mt-3 text-[16px] leading-6 text-muted-ink">
+            <Text className="font-inter mt-3 text-[16px] leading-6 text-muted-foreground">
               Start naturally or set every detail yourself. Nothing is saved until you confirm.
             </Text>
 
             <SegmentedControl value={captureMode} onChange={setCaptureMode} />
 
             {captureMode === 'natural' ? (
-              <View className="mt-5 rounded-[22px] border border-taupe bg-paper p-4">
-                <Text className="mb-2 text-[13px] font-semibold text-muted-ink">
+              <View className="mt-5 rounded-[16px] border border-taupe bg-paper p-4">
+                <Text className="mb-2 text-[13px] font-inter-semibold text-muted-foreground">
                   DESCRIBE IT
                 </Text>
                 <TextInput
                   accessibilityLabel="Natural language reminder"
-                  className="min-h-[128px] text-[18px] leading-7 text-ink"
+                  className="min-h-[128px] text-[18px] leading-7 text-foreground"
                   maxLength={2000}
                   multiline
                   onChangeText={setNaturalText}
                   placeholder="Tomorrow at 9, remind me to call John"
-                  placeholderTextColor="#8B8B87"
+                  placeholderTextColor={colors.muted}
                   textAlignVertical="top"
                   value={naturalText}
                 />
@@ -359,10 +389,10 @@ export default function CreateReminderScreen() {
             ) : (
               <View className="mt-5 gap-5">
                 {parserMessages.length > 0 ? (
-                  <View className="rounded-2xl bg-intelligence-soft p-4">
-                    <Text className="text-[14px] font-semibold text-ink">Review the draft</Text>
+                  <View className="rounded-[16px] bg-intelligence-soft p-4">
+                    <Text className="text-[14px] font-inter-semibold text-foreground">Review the draft</Text>
                     {parserMessages.map((message) => (
-                      <Text key={message} className="mt-1.5 text-[13px] leading-5 text-muted-ink">
+                      <Text key={message} className="font-inter mt-1.5 text-[13px] leading-5 text-muted-foreground">
                         • {message}
                       </Text>
                     ))}
@@ -392,59 +422,43 @@ export default function CreateReminderScreen() {
                   value={contextNote}
                 />
 
-                <FormSection label="WHEN">
-                  <DateTimeRow
-                    label={inferred.has('date') ? 'Date · inferred' : 'Date'}
-                    value={formatDisplayDate(dateTime, state.preferences.locale)}
-                    onPress={() => setPickerMode('date')}
-                  />
-                  <Divider />
-                  <DateTimeRow
-                    label={inferred.has('time') ? 'Time · inferred' : 'Time'}
-                    value={formatDisplayTime(
-                      dateTime,
-                      state.preferences.locale,
-                      state.preferences.timeFormat,
-                    )}
-                    onPress={() => setPickerMode('time')}
-                  />
-                  <Divider />
-                  <View className="px-4 py-3.5">
-                    <Text className="text-[13px] font-medium text-subtle-ink">TIMEZONE</Text>
-                    <Text className="mt-1 text-[15px] font-medium text-ink">
-                      {state.preferences.timezone}
-                    </Text>
-                  </View>
-                </FormSection>
-
-                {pickerMode ? (
-                  <View className="rounded-2xl bg-paper p-3">
-                    <DateTimePicker
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      minimumDate={
-                        pickerMode === 'end-date'
-                          ? dateTime
-                          : pickerMode === 'date'
-                            ? new Date()
-                            : undefined
-                      }
-                      mode={pickerMode === 'time' ? 'time' : 'date'}
-                      onChange={handlePickerChange}
-                      value={pickerMode === 'end-date' ? endDate : dateTime}
+                <View>
+                  <Text className="mb-2 text-[13px] font-inter-semibold text-muted-foreground">WHEN</Text>
+                  <View className="flex-row gap-3">
+                    <WhenPickerButton
+                      inferred={inferred.has('date')}
+                      icon="calendar"
+                      label="Date"
+                      value={formatDisplayDate(dateTime, state.preferences.locale)}
+                      onPress={() => openPicker('date')}
                     />
-                    {Platform.OS === 'ios' ? (
-                      <Pressable
-                        className="min-h-11 items-center justify-center rounded-xl bg-secondary-fill"
-                        onPress={() => setPickerMode(null)}
-                      >
-                        <Text className="text-[15px] font-semibold text-ink">Done</Text>
-                      </Pressable>
-                    ) : null}
+                    <WhenPickerButton
+                      inferred={inferred.has('time')}
+                      icon="clock"
+                      label="Time"
+                      value={formatDisplayTime(
+                        dateTime,
+                        state.preferences.locale,
+                        state.preferences.timeFormat,
+                      )}
+                      onPress={() => openPicker('time')}
+                    />
                   </View>
-                ) : null}
+                  <View className="mt-3 flex-row items-center rounded-[14px] bg-secondary-fill px-4 py-3">
+                    <View className="size-9 items-center justify-center rounded-[11px] bg-paper">
+                      <SymbolIcon name="clock" size={17} />
+                    </View>
+                    <View className="ml-3 flex-1">
+                      <Text className="font-inter-medium text-[11px] text-muted-foreground">TIMEZONE</Text>
+                      <Text className="mt-0.5 font-inter-semibold text-[14px] text-foreground">
+                        {state.preferences.timezone}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
 
                 <View>
-                  <Text className="mb-2 text-[13px] font-semibold text-muted-ink">
+                  <Text className="mb-2 text-[13px] font-inter-semibold text-muted-foreground">
                     {inferred.has('recurrence') ? 'REPEAT · INFERRED' : 'REPEAT'}
                   </Text>
                   <View className="flex-row flex-wrap gap-2">
@@ -469,7 +483,7 @@ export default function CreateReminderScreen() {
 
                 {scheduleType === 'SELECTED_WEEKDAYS' ? (
                   <View>
-                    <Text className="mb-2 text-[13px] font-semibold text-muted-ink">DAYS</Text>
+                    <Text className="mb-2 text-[13px] font-inter-semibold text-muted-foreground">DAYS</Text>
                     <View className="flex-row justify-between gap-1.5">
                       {weekdayLabels.map((label, day) => (
                         <Pressable
@@ -495,8 +509,8 @@ export default function CreateReminderScreen() {
                         >
                           <Text
                             className={cn(
-                              'text-[14px] font-semibold',
-                              selectedWeekdays.includes(day) ? 'text-white' : 'text-ink',
+                              'text-[14px] font-inter-semibold',
+                              selectedWeekdays.includes(day) ? 'text-white' : 'text-foreground',
                             )}
                           >
                             {label}
@@ -509,7 +523,7 @@ export default function CreateReminderScreen() {
 
                 {scheduleType !== 'ONE_TIME' ? (
                   <View className="gap-3">
-                    <Text className="text-[13px] font-semibold text-muted-ink">SERIES END</Text>
+                    <Text className="text-[13px] font-inter-semibold text-muted-foreground">SERIES END</Text>
                     <View className="flex-row flex-wrap gap-2">
                       {([
                         ['none', 'No end'],
@@ -545,7 +559,7 @@ export default function CreateReminderScreen() {
                         <DateTimeRow
                           label="Final local date"
                           value={formatDisplayDate(endDate, state.preferences.locale)}
-                          onPress={() => setPickerMode('end-date')}
+                          onPress={() => openPicker('end-date')}
                         />
                       </FormSection>
                     ) : null}
@@ -578,6 +592,21 @@ export default function CreateReminderScreen() {
             )}
           </View>
         </ScrollView>
+
+        {pickerMode ? (
+          <DateTimePickerSheet
+            locale={state.preferences.locale}
+            minimumDate={startOfDay(pickerMode === 'end-date' ? dateTime : new Date())}
+            mode={pickerMode === 'time' ? 'time' : 'date'}
+            timeFormat={state.preferences.timeFormat}
+            timezone={state.preferences.timezone}
+            title={pickerMode === 'end-date' ? 'Choose end date' : undefined}
+            value={pickerDraft}
+            onCancel={() => setPickerMode(null)}
+            onChange={setPickerDraft}
+            onConfirm={applyPickerSelection}
+          />
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -591,19 +620,21 @@ function SegmentedControl({
   onChange: (value: CaptureMode) => void;
 }) {
   return (
-    <View className="mt-7 flex-row rounded-2xl bg-secondary-fill p-1">
+    <View className="mt-7 flex-row rounded-[16px] bg-secondary-fill p-1">
       {(['natural', 'manual'] as const).map((item) => (
         <Pressable
           key={item}
           accessibilityRole="tab"
           accessibilityState={{ selected: value === item }}
           className={cn(
-            'min-h-11 flex-1 items-center justify-center rounded-xl',
-            value === item && 'bg-paper shadow-sm',
+            'min-h-11 flex-1 items-center justify-center rounded-[12px] border',
+            value === item
+              ? 'border-taupe bg-paper'
+              : 'border-transparent bg-transparent',
           )}
           onPress={() => onChange(item)}
         >
-          <Text className={cn('text-[15px] font-semibold', value === item ? 'text-ink' : 'text-muted-ink')}>
+          <Text className={cn('text-[15px] font-inter-semibold', value === item ? 'text-foreground' : 'text-muted-foreground')}>
             {item === 'natural' ? 'Quick capture' : 'Manual'}
           </Text>
         </Pressable>
@@ -615,9 +646,46 @@ function SegmentedControl({
 function FormSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View>
-      <Text className="mb-2 text-[13px] font-semibold text-muted-ink">{label}</Text>
-      <View className="overflow-hidden rounded-[18px] border border-taupe bg-paper">{children}</View>
+      <Text className="mb-2 text-[13px] font-inter-semibold text-muted-foreground">{label}</Text>
+      <View className="overflow-hidden rounded-[16px] border border-taupe bg-paper">{children}</View>
     </View>
+  );
+}
+
+function WhenPickerButton({
+  label,
+  value,
+  icon,
+  inferred,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  icon: SymbolName;
+  inferred: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      className="min-h-[112px] flex-1 justify-between rounded-[18px] bg-paper p-4 active:bg-secondary-fill"
+      onPress={onPress}
+    >
+      <View className="flex-row items-center justify-between">
+        <View className="size-9 items-center justify-center rounded-[11px] bg-secondary-fill">
+          <SymbolIcon name={icon} size={18} />
+        </View>
+        <SymbolIcon className="text-subtle-foreground" name="chevron" size={21} />
+      </View>
+      <View className="mt-4">
+        <Text className="font-inter-medium text-[11px] text-muted-foreground">
+          {inferred ? `${label.toUpperCase()} · INFERRED` : label.toUpperCase()}
+        </Text>
+        <Text className="mt-1 font-inter-semibold text-[15px] text-foreground" numberOfLines={2}>
+          {value}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -628,15 +696,11 @@ function DateTimeRow({ label, value, onPress }: { label: string; value: string; 
       className="min-h-[58px] flex-row items-center px-4 active:bg-canvas"
       onPress={onPress}
     >
-      <Text className="flex-1 text-[16px] font-medium text-ink">{label}</Text>
-      <Text className="text-[15px] font-medium text-muted-ink">{value}</Text>
-      <Text className="ml-2 text-[22px] font-light text-subtle-ink">›</Text>
+      <Text className="flex-1 text-[16px] font-inter-medium text-foreground">{label}</Text>
+      <Text className="text-[15px] font-inter-medium text-muted-foreground">{value}</Text>
+      <SymbolIcon className="ml-2 text-subtle-foreground" name="chevron" size={21} />
     </Pressable>
   );
-}
-
-function Divider() {
-  return <View className="ml-4 h-px bg-taupe/70" />;
 }
 
 function ChoiceChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
@@ -650,7 +714,7 @@ function ChoiceChip({ label, selected, onPress }: { label: string; selected: boo
       )}
       onPress={onPress}
     >
-      <Text className={cn('text-[14px] font-semibold', selected ? 'text-white' : 'text-ink')}>
+      <Text className={cn('text-[14px] font-inter-semibold', selected ? 'text-white' : 'text-foreground')}>
         {label}
       </Text>
     </Pressable>
@@ -668,10 +732,10 @@ function PreviewCard({
 }) {
   const instant = new Date(preview.schedule.resolvedAt);
   return (
-    <View className="rounded-[22px] bg-ink p-5">
-      <Text className="text-[12px] font-semibold tracking-[1.2px] text-white/60">READY TO SAVE</Text>
-      <Text className="mt-3 text-[22px] font-semibold leading-7 text-white">{preview.title}</Text>
-      <Text className="mt-3 text-[15px] leading-6 text-white/75">
+    <View className="rounded-[16px] bg-ink p-5">
+      <Text className="font-inter-semibold text-[12px] text-white/60">READY TO SAVE</Text>
+      <Text className="mt-3 text-[22px] font-inter-semibold leading-7 text-white">{preview.title}</Text>
+      <Text className="font-inter mt-3 text-[15px] leading-6 text-white/75">
         {new Intl.DateTimeFormat(locale, {
           weekday: 'long',
           month: 'long',
@@ -691,7 +755,7 @@ function PreviewCard({
         />
       </View>
       {preview.schedule.adjustments.map((adjustment) => (
-        <Text key={adjustment.code} className="mt-4 text-[13px] leading-5 text-white/75">
+        <Text key={adjustment.code} className="font-inter mt-4 text-[13px] leading-5 text-white/75">
           {adjustment.message}
         </Text>
       ))}
@@ -702,22 +766,76 @@ function PreviewCard({
 function PreviewLine({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row gap-4">
-      <Text className="w-24 text-[13px] text-white/50">{label}</Text>
-      <Text className="flex-1 text-right text-[13px] font-medium text-white">{value}</Text>
+      <Text className="font-inter w-24 text-[13px] text-white/50">{label}</Text>
+      <Text className="flex-1 text-right text-[13px] font-inter-medium text-white">{value}</Text>
     </View>
   );
 }
 
-function tomorrowAtNine() {
+function currentDateAndTime() {
   const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(9, 0, 0, 0);
+  date.setMinutes(date.getMinutes() + 1, 0, 0);
   return date;
+}
+
+function addCreatedOccurrences(
+  current: { items: OccurrenceListItem[]; nextCursor: string | null } | undefined,
+  reminder: CreatedReminder,
+) {
+  if (!current) return current;
+  const createdItems: OccurrenceListItem[] = reminder.occurrences.map((occurrence) => ({
+    id: occurrence.id,
+    reminderId: reminder.id,
+    title: reminder.title,
+    contextNote: reminder.contextNote,
+    reminderRevision: reminder.revision,
+    scheduleId: occurrence.scheduleId,
+    scheduleRevision: occurrence.scheduleRevision,
+    scheduleType: reminder.schedule.type,
+    timezone: reminder.schedule.timezone,
+    weekdays: reminder.schedule.weekdays,
+    sequence: occurrence.sequence,
+    lifecycle: occurrence.lifecycle,
+    localDate: occurrence.localDate,
+    localTime: occurrence.localTime,
+    originalScheduledAt: occurrence.originalScheduledAt,
+    effectiveScheduledAt: occurrence.effectiveScheduledAt,
+  }));
+  const createdIds = new Set(createdItems.map((item) => item.id));
+  const items = [
+    ...current.items.filter((item) => !createdIds.has(item.id)),
+    ...createdItems,
+  ]
+    .sort((left, right) =>
+      left.effectiveScheduledAt === right.effectiveScheduledAt
+        ? left.id.localeCompare(right.id)
+        : left.effectiveScheduledAt.localeCompare(right.effectiveScheduledAt),
+    )
+    .slice(0, 50);
+  return { ...current, items };
 }
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
+  return next;
+}
+
+function mergeDate(current: Date, selected: Date) {
+  const next = new Date(current);
+  next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+  return next;
+}
+
+function mergeTime(current: Date, selected: Date) {
+  const next = new Date(current);
+  next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+  return next;
+}
+
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
   return next;
 }
 

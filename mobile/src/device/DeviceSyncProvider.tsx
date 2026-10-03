@@ -11,20 +11,41 @@ import {
 } from '../preferences/preferences.api';
 import { syncCurrentDevice } from './device-installation';
 
+const FOREGROUND_SYNC_COOLDOWN_MS = 5 * 60_000;
+
 export function DeviceSyncProvider({ children }: PropsWithChildren) {
   const { status, user } = useAuth();
   const { hydrated, state } = useOnboarding();
   const lastSignature = useRef<string | null>(null);
+  const lastSyncAt = useRef(0);
+  const syncTask = useRef<Promise<void> | null>(null);
 
-  const syncDeviceAndReminders = useCallback(async () => {
-    await syncCurrentDevice({
-      permission: state.notificationPermission,
-      locale: state.preferences.locale,
-      timezone: state.preferences.timezone,
-    });
-    if (notificationPermissionAllowsAlerts(state.notificationPermission)) {
-      await reconcileReminderNotifications();
+  const syncDeviceAndReminders = useCallback((force = false) => {
+    if (syncTask.current) return syncTask.current;
+    if (!force && Date.now() - lastSyncAt.current < FOREGROUND_SYNC_COOLDOWN_MS) {
+      return Promise.resolve();
     }
+
+    const task = (async () => {
+      await syncCurrentDevice({
+        permission: state.notificationPermission,
+        locale: state.preferences.locale,
+        timezone: state.preferences.timezone,
+      });
+      if (notificationPermissionAllowsAlerts(state.notificationPermission)) {
+        await reconcileReminderNotifications({ force });
+      }
+    })();
+    syncTask.current = task;
+    void task
+      .then(() => {
+        lastSyncAt.current = Date.now();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (syncTask.current === task) syncTask.current = null;
+      });
+    return task;
   }, [state.notificationPermission, state.preferences.locale, state.preferences.timezone]);
 
   useEffect(() => {
@@ -40,7 +61,7 @@ export function DeviceSyncProvider({ children }: PropsWithChildren) {
     lastSignature.current = signature;
 
     void Promise.allSettled([
-      syncDeviceAndReminders(),
+      syncDeviceAndReminders(true),
       syncProfile(state.preferences),
     ]).then((results) => {
       if (results.some((result) => result.status === 'rejected')) {

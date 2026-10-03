@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { type Href, useRouter } from 'expo-router';
-import type { NotificationResponse } from 'expo-notifications';
+import type { Notification, NotificationResponse } from 'expo-notifications';
 
 import { queryClient } from '../../api/query-client';
 import { useAuth } from '../../auth/AuthProvider';
@@ -24,6 +24,7 @@ import {
 } from './reminder-notification-scheduler';
 
 const handledResponses = new Set<string>();
+const handledForegroundNotifications = new Set<string>();
 
 export function useNotificationNavigation(): void {
   const router = useRouter();
@@ -34,7 +35,18 @@ export function useNotificationNavigation(): void {
     if (status !== 'authenticated') return;
 
     let active = true;
-    let removeListener: (() => void) | null = null;
+    let removeListeners: (() => void) | null = null;
+
+    function handleForegroundNotification(notification: Notification) {
+      const identifier = notification.request.identifier;
+      if (handledForegroundNotifications.has(identifier)) return;
+      const data = notification.request.content.data;
+      if (data?.['alertStyle'] !== 'ALARM') return;
+      const route = reminderRoute(data);
+      if (!route || !String(route).startsWith('/alarm/')) return;
+      handledForegroundNotifications.add(identifier);
+      if (active) router.push(route);
+    }
 
     async function handleResponse(response: NotificationResponse) {
       const responseKey = `${response.notification.request.identifier}:${response.actionIdentifier}`;
@@ -124,12 +136,18 @@ export function useNotificationNavigation(): void {
       const subscription = notifications.addNotificationResponseReceivedListener(
         (response) => void handleResponse(response),
       );
-      removeListener = () => subscription.remove();
+      const receivedSubscription = notifications.addNotificationReceivedListener(
+        handleForegroundNotification,
+      );
+      removeListeners = () => {
+        subscription.remove();
+        receivedSubscription.remove();
+      };
     });
 
     return () => {
       active = false;
-      removeListener?.();
+      removeListeners?.();
     };
   }, [router, showToast, status]);
 }
@@ -171,7 +189,8 @@ function notificationPayload(
 function reminderRoute(data: Record<string, unknown> | undefined): Href | null {
   if (!data) return null;
   const value = data['url'];
-  return typeof value === 'string' && value.startsWith('/reminders/')
+  return typeof value === 'string' &&
+    (value.startsWith('/reminders/') || value.startsWith('/alarm/'))
     ? (value as Href)
     : null;
 }

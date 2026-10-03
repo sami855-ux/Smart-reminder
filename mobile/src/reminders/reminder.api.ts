@@ -53,7 +53,10 @@ export async function createReminder(
       {
         method: 'POST',
         url: '/reminders',
-        headers: { 'Idempotency-Key': idempotencyKey },
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+          Prefer: 'return=representation',
+        },
         data: { ...input, confirmed: true },
       },
       createdReminderSchema,

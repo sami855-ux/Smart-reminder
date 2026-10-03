@@ -129,6 +129,9 @@ export class StoredOccurrenceDto {
   @ApiProperty()
   scheduleRevision!: number;
 
+  @ApiProperty()
+  sequence!: number;
+
   @ApiProperty({ enum: ['SCHEDULED', 'COMPLETED', 'SKIPPED', 'CANCELLED'] })
   lifecycle!: string;
 
@@ -174,6 +177,9 @@ export class CreatedReminderResponseDto {
 
   @ApiProperty({ type: StoredOccurrenceDto })
   firstOccurrence!: StoredOccurrenceDto;
+
+  @ApiPropertyOptional({ type: [StoredOccurrenceDto] })
+  occurrences?: StoredOccurrenceDto[];
 
   @ApiProperty({ type: IdempotencyResultDto })
   idempotency!: IdempotencyResultDto;

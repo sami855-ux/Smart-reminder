@@ -20,7 +20,7 @@ const reminderInclude = {
   schedules: { orderBy: { revision: 'asc' as const }, take: 1 },
   occurrences: {
     orderBy: [{ scheduleRevision: 'asc' as const }, { sequence: 'asc' as const }],
-    take: 1,
+    take: 128,
   },
 } satisfies Prisma.ReminderInclude;
 
@@ -383,6 +383,7 @@ export class RemindersService {
         id: string;
         scheduleId: string;
         scheduleRevision: number;
+        sequence: number;
         lifecycle: string;
         localDate: string;
         localTime: string;
@@ -422,12 +423,24 @@ export class RemindersService {
         id: occurrence.id,
         scheduleId: occurrence.scheduleId,
         scheduleRevision: occurrence.scheduleRevision,
+        sequence: occurrence.sequence,
         lifecycle: occurrence.lifecycle,
         localDate: occurrence.localDate.trim(),
         localTime: occurrence.localTime.trim(),
         originalScheduledAt: occurrence.originalScheduledAt.toISOString(),
         effectiveScheduledAt: occurrence.effectiveScheduledAt.toISOString(),
       },
+      occurrences: reminder.occurrences.map((item) => ({
+        id: item.id,
+        scheduleId: item.scheduleId,
+        scheduleRevision: item.scheduleRevision,
+        sequence: item.sequence,
+        lifecycle: item.lifecycle,
+        localDate: item.localDate.trim(),
+        localTime: item.localTime.trim(),
+        originalScheduledAt: item.originalScheduledAt.toISOString(),
+        effectiveScheduledAt: item.effectiveScheduledAt.toISOString(),
+      })),
       idempotency: { key, replayed },
       createdAt: reminder.createdAt.toISOString(),
       updatedAt: reminder.updatedAt.toISOString(),

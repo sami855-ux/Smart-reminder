@@ -55,17 +55,19 @@ export default function SignInScreen() {
 
   return (
     <AuthScreen
-      description="Use your email and password to continue to your reminders."
+      appearance="auth"
+      description="Sign in to access your reminders and keep your schedule up to date."
       footer={
         <View className="flex-row flex-wrap items-center justify-center gap-1">
-          <Text className="text-sm font-normal text-muted-ink">New here?</Text>
+          <Text className="font-inter text-sm text-auth-muted">New here?</Text>
           <TextLink
             label="Create an account"
             onPress={() => router.push('/(auth)/register')}
+            tone="auth"
           />
         </View>
       }
-      title="Sign in"
+      title="Welcome back"
     >
       <View className="gap-5">
         <Controller
@@ -76,6 +78,7 @@ export default function SignInScreen() {
               autoCapitalize="none"
               autoComplete="email"
               error={fieldState.error?.message}
+              icon="mail"
               keyboardType="email-address"
               label="Email address"
               onBlur={onBlur}
@@ -83,6 +86,7 @@ export default function SignInScreen() {
               placeholder="name@example.com"
               returnKeyType="next"
               textContentType="emailAddress"
+              tone="auth"
               value={value}
             />
           )}
@@ -96,6 +100,7 @@ export default function SignInScreen() {
               autoCapitalize="none"
               autoComplete="current-password"
               error={fieldState.error?.message}
+              icon="lock"
               label="Password"
               onBlur={onBlur}
               onChangeText={onChange}
@@ -104,6 +109,7 @@ export default function SignInScreen() {
               returnKeyType="done"
               secureTextEntry
               textContentType="password"
+              tone="auth"
               value={value}
             />
           )}
@@ -113,6 +119,7 @@ export default function SignInScreen() {
           <TextLink
             label="Forgot password?"
             onPress={() => router.push('/(auth)/forgot-password')}
+            tone="auth"
           />
         </View>
 
@@ -121,6 +128,7 @@ export default function SignInScreen() {
             label="Sign in"
             loading={isSubmitting}
             onPress={() => void submit()}
+            tone="auth"
           />
         </View>
       </View>

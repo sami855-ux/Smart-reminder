@@ -408,6 +408,15 @@
         "operationId": "RemindersController_create",
         "parameters": [
           {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Use return=representation to include materialized occurrences in the response",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "Idempotency-Key",
             "in": "header",
             "description": "Stable 8–128 character key reused only for the same create intent",
@@ -429,7 +438,7 @@
         },
         "responses": {
           "201": {
-            "description": "Created reminder, schedule, and first occurrence",
+            "description": "Created reminder with its schedule and materialized occurrences",
             "content": {
               "application/json": {
                 "schema": {
@@ -1890,6 +1899,9 @@
           "scheduleRevision": {
             "type": "number"
           },
+          "sequence": {
+            "type": "number"
+          },
           "lifecycle": {
             "type": "string",
             "enum": [
@@ -1918,6 +1930,7 @@
           "id",
           "scheduleId",
           "scheduleRevision",
+          "sequence",
           "lifecycle",
           "localDate",
           "localTime",
@@ -1970,6 +1983,12 @@
           },
           "firstOccurrence": {
             "$ref": "#/components/schemas/StoredOccurrenceDto"
+          },
+          "occurrences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoredOccurrenceDto"
+            }
           },
           "idempotency": {
             "$ref": "#/components/schemas/IdempotencyResultDto"

@@ -83,19 +83,29 @@ export class RemindersController {
     required: true,
     description: 'Stable 8–128 character key reused only for the same create intent',
   })
+  @ApiHeader({
+    name: 'Prefer',
+    required: false,
+    description: 'Use return=representation to include materialized occurrences in the response',
+  })
   @ApiOperation({ summary: 'Create one explicitly confirmed reminder atomically' })
   @ApiCreatedResponse({
-    description: 'Created reminder, schedule, and first occurrence',
+    description: 'Created reminder with its schedule and materialized occurrences',
     type: CreatedReminderResponseDto,
   })
   @ApiBadRequestResponse({ description: 'Missing confirmation, invalid key, or invalid schedule' })
   @ApiConflictResponse({ description: 'Idempotency key reused with a different request' })
-  create(
+  async create(
     @CurrentUser() principal: AuthPrincipal,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Headers('prefer') prefer: string | undefined,
     @Body() dto: CreateReminderDto,
   ) {
-    return this.reminders.create(principal, idempotencyKey, dto);
+    const created = await this.reminders.create(principal, idempotencyKey, dto);
+    if (prefer?.split(',').some((value) => value.trim() === 'return=representation')) {
+      return created;
+    }
+    return { ...created, occurrences: undefined };
   }
 
   @Post('parse-reminder')

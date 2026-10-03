@@ -40,17 +40,18 @@ export default function VerifyEmailScreen() {
 
   return (
     <AuthScreen
-      description="Confirm this one-time link to finish verifying your account."
+      appearance="auth"
+      description="Confirm this one-time link to finish securing your Smart Reminder account."
       onBack={() => router.back()}
-      title="Confirm your email"
+      title="Verify your email"
     >
-      <View className="gap-4">
+      <View className="gap-5">
         {!tokenResult.success ? (
-          <View className="rounded-2xl bg-urgent-soft p-4">
-            <Text className="text-[17px] font-semibold text-ink">
+          <View className="border-l-2 border-urgent pl-4">
+            <Text className="font-inter-semibold text-[16px] text-auth-ink">
               This link can’t be used
             </Text>
-            <Text className="mt-1 text-[15px] font-normal leading-5 text-muted-ink/80">
+            <Text className="mt-1 font-inter text-[14px] leading-5 text-auth-muted">
               It may be incomplete or expired. Request a new verification link
               from your account.
             </Text>
@@ -61,11 +62,13 @@ export default function VerifyEmailScreen() {
             label="Verify email"
             loading={submitting}
             onPress={() => void verify()}
+            tone="auth"
           />
         ) : (
           <Button
             label="Return to Smart Reminder"
             onPress={() => router.replace('/')}
+            tone="auth"
           />
         )}
       </View>

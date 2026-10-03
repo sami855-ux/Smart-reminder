@@ -102,7 +102,12 @@ export const createdReminderSchema = z
     lifecycle: z.enum(['ACTIVE', 'CANCELLED', 'ARCHIVED']),
     revision: z.number().int().positive(),
     schedule: storedScheduleSchema,
-    firstOccurrence: storedOccurrenceSchema,
+    firstOccurrence: storedOccurrenceSchema.extend({
+      sequence: z.number().int().positive(),
+    }),
+    occurrences: z.array(
+      storedOccurrenceSchema.extend({ sequence: z.number().int().positive() }),
+    ),
     idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),

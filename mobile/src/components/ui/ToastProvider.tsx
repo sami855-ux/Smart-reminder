@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 
 import { cn } from '../../lib/cn';
 
@@ -98,46 +99,36 @@ export function ToastViewport() {
     <View
       className="absolute left-4 right-4 z-50"
       pointerEvents="box-none"
-      style={{ top: insets.top + 12 }}
+      style={{ bottom: insets.bottom + 16 }}
     >
-      <View
+      <Animated.View
+        key={toast.id}
         accessibilityLiveRegion="assertive"
         accessibilityRole="alert"
-        className={cn(
-          'w-full max-w-[520px] flex-row gap-3 self-center rounded-2xl border bg-paper p-4 shadow-lg',
-          toast.tone === 'error' && 'border-urgent/30',
-          toast.tone === 'success' && 'border-success/30',
-          toast.tone === 'info' && 'border-intelligence/30',
-        )}
+        className="w-full max-w-[360px] self-center"
+        entering={FadeInDown.duration(180)}
+        exiting={FadeOutDown.duration(140)}
       >
-        <View
-          className={cn(
-            'mt-1 size-2.5 rounded-full',
-            toast.tone === 'error' && 'bg-urgent',
-            toast.tone === 'success' && 'bg-success',
-            toast.tone === 'info' && 'bg-intelligence',
-          )}
-        />
-        <View className="flex-1">
-          <Text className="font-semibold text-[15px] leading-5 text-ink">
-            {toast.title}
-          </Text>
-          {toast.message ? (
-            <Text className="mt-1 font-normal text-[13px] leading-5 text-muted-ink">
-              {toast.message}
-            </Text>
-          ) : null}
-        </View>
         <Pressable
-          accessibilityLabel="Dismiss message"
+          accessibilityLabel={`${toast.title}${toast.message ? `. ${toast.message}` : ''}. Tap to dismiss.`}
           accessibilityRole="button"
-          className="size-10 items-center justify-center rounded-xl active:bg-canvas"
-          hitSlop={4}
+          className="min-h-12 flex-row items-center rounded-[16px] bg-ink px-4 py-3"
           onPress={dismissToast}
         >
-          <Text className="font-normal text-xl leading-6 text-muted-ink">×</Text>
+          <View
+            className={cn(
+              'mr-3 size-2 rounded-full',
+              toast.tone === 'error' && 'bg-urgent',
+              toast.tone === 'success' && 'bg-kast-lime',
+              toast.tone === 'info' && 'bg-white',
+            )}
+          />
+          <Text className="flex-1 font-inter text-[13px] leading-5 text-white" numberOfLines={3}>
+            <Text className="font-inter-semibold">{toast.title}</Text>
+            {toast.message ? `  ${toast.message}` : ''}
+          </Text>
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }

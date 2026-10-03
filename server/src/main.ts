@@ -31,7 +31,13 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: parseCorsOrigins(config.get('CORS_ORIGINS', { infer: true })),
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-request-id'],
+    allowedHeaders: [
+      'authorization',
+      'content-type',
+      'idempotency-key',
+      'prefer',
+      'x-request-id',
+    ],
     exposedHeaders: ['x-request-id'],
     credentials: false,
     maxAge: 86_400,

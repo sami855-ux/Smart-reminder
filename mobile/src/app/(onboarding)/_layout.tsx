@@ -10,7 +10,7 @@ export default function OnboardingLayout() {
   return (
     <Stack
       screenOptions={{
-        animation: 'slide_from_right',
+        animation: 'default',
         gestureEnabled: false,
         headerShown: false,
       }}

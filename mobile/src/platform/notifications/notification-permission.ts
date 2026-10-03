@@ -1,11 +1,15 @@
 import { isRunningInExpoGo } from 'expo';
+import * as Application from 'expo-application';
 import * as Linking from 'expo-linking';
-import { PermissionsAndroid, Platform } from 'react-native';
+import { Linking as NativeLinking, PermissionsAndroid, Platform } from 'react-native';
 
 import type { NotificationPermissionState } from '../../onboarding/types';
-import { loadNotificationsModule } from './notification-runtime';
+import {
+  loadNotificationsModule,
+  REMINDER_NOTIFICATION_CHANNEL_ID,
+} from './notification-runtime';
 
-type NotificationsModule = typeof import('expo-notifications');
+type NotificationsModule = NonNullable<Awaited<ReturnType<typeof loadNotificationsModule>>>;
 type NotificationPermissionsStatus = Awaited<
   ReturnType<NotificationsModule['getPermissionsAsync']>
 >;
@@ -120,10 +124,12 @@ export async function requestNotificationPermission(): Promise<PermissionSnapsho
 
   try {
     if (Platform.OS === 'android') {
-      await notifications.setNotificationChannelAsync('reminders', {
+      await notifications.setNotificationChannelAsync(REMINDER_NOTIFICATION_CHANNEL_ID, {
         name: 'Reminders',
         description: 'Alerts for reminders you create in Smart Reminder.',
-        importance: notifications.AndroidImportance.HIGH,
+        enableVibrate: true,
+        importance: notifications.AndroidImportance.MAX,
+        sound: 'default',
         vibrationPattern: [0, 250, 150, 250],
       });
     }
@@ -147,6 +153,35 @@ export async function requestNotificationPermission(): Promise<PermissionSnapsho
 
 export async function openNotificationSettings(): Promise<void> {
   await Linking.openSettings();
+}
+
+export async function openNotificationSoundSettings(channelId: string | null): Promise<void> {
+  if (Platform.OS !== 'android' || !channelId || !Application.applicationId) {
+    await openNotificationSettings();
+    return;
+  }
+
+  try {
+    await NativeLinking.sendIntent('android.settings.CHANNEL_NOTIFICATION_SETTINGS', [
+      { key: 'android.provider.extra.APP_PACKAGE', value: Application.applicationId },
+      { key: 'android.provider.extra.CHANNEL_ID', value: channelId },
+    ]);
+  } catch {
+    await openNotificationSettings();
+  }
+}
+
+export async function openExactAlarmSettings(): Promise<void> {
+  if (Platform.OS !== 'android' || Number(Platform.Version) < 31) {
+    await openNotificationSettings();
+    return;
+  }
+
+  try {
+    await NativeLinking.sendIntent('android.settings.REQUEST_SCHEDULE_EXACT_ALARM');
+  } catch {
+    await openNotificationSettings();
+  }
 }
 
 export function notificationPermissionAllowsAlerts(

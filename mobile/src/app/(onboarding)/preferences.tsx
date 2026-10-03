@@ -75,7 +75,7 @@ export default function PreferencesScreen() {
       >
         <View className="overflow-hidden rounded-3xl border border-taupe bg-paper">
           <View className="p-5">
-            <Text className="mb-3 font-medium text-[13px] text-muted-ink">
+            <Text className="mb-3 font-medium text-[13px] text-muted-foreground">
               Locale
             </Text>
             <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-2">
@@ -97,7 +97,7 @@ export default function PreferencesScreen() {
                     <Text
                       className={cn(
                         'font-medium text-[15px]',
-                        selected ? 'text-white' : 'text-ink',
+                        selected ? 'text-white' : 'text-foreground',
                       )}
                     >
                       {option}
@@ -111,7 +111,7 @@ export default function PreferencesScreen() {
           <View className="h-px bg-taupe/40" />
 
           <View className="p-5">
-            <Text className="mb-3 font-medium text-[13px] text-muted-ink">
+            <Text className="mb-3 font-medium text-[13px] text-muted-foreground">
               Timezone
             </Text>
             <Pressable
@@ -121,14 +121,14 @@ export default function PreferencesScreen() {
               onPress={() => setTimezonePickerOpen(true)}
             >
               <View className="flex-1">
-                <Text className="font-semibold text-[15px] text-ink">
+                <Text className="font-semibold text-[15px] text-foreground">
                   {timezone}
                 </Text>
-                <Text className="mt-1 font-normal text-xs text-muted-ink">
+                <Text className="mt-1 font-normal text-xs text-muted-foreground">
                   IANA timezone
                 </Text>
               </View>
-              <Text aria-hidden className="font-normal text-3xl leading-8 text-intelligence">
+              <Text aria-hidden className="font-normal text-3xl leading-8 text-accent">
                 ›
               </Text>
             </Pressable>
@@ -137,7 +137,7 @@ export default function PreferencesScreen() {
           <View className="h-px bg-taupe/40" />
 
           <View className="p-5">
-            <Text className="mb-3 font-medium text-[13px] text-muted-ink">
+            <Text className="mb-3 font-medium text-[13px] text-muted-foreground">
               Time display
             </Text>
             <View
@@ -160,7 +160,7 @@ export default function PreferencesScreen() {
                     <Text
                       className={cn(
                         'font-semibold text-[15px]',
-                        selected ? 'text-white' : 'text-muted-ink',
+                        selected ? 'text-white' : 'text-muted-foreground',
                       )}
                     >
                       {option === '12-hour' ? '9:00 AM' : '09:00'}
@@ -173,10 +173,10 @@ export default function PreferencesScreen() {
         </View>
 
         <View className="mt-4 rounded-2xl bg-intelligence-soft px-4 py-3.5">
-          <Text className="font-semibold text-xs text-intelligence-dark">
+          <Text className="font-semibold text-xs text-accent">
             LIVE PREVIEW
           </Text>
-          <Text className="mt-1.5 font-semibold text-[15px] leading-6 text-ink">
+          <Text className="mt-1.5 font-semibold text-[15px] leading-6 text-foreground">
             {formatPreferenceExample(preferences)}
           </Text>
         </View>
@@ -191,10 +191,10 @@ export default function PreferencesScreen() {
         <SafeAreaView className="flex-1 bg-canvas">
           <View className="flex-row items-center justify-between border-b border-taupe px-5 py-4">
             <View>
-              <Text className="font-semibold text-[22px] text-ink">
+              <Text className="font-semibold text-[22px] text-foreground">
                 Choose timezone
               </Text>
-              <Text className="mt-0.5 font-normal text-[13px] text-muted-ink">
+              <Text className="mt-0.5 font-normal text-[13px] text-muted-foreground">
                 IANA timezone identifiers
               </Text>
             </View>
@@ -203,14 +203,14 @@ export default function PreferencesScreen() {
               className="min-h-11 justify-center px-2 active:opacity-70"
               onPress={() => setTimezonePickerOpen(false)}
             >
-              <Text className="font-semibold text-base text-intelligence-dark">Done</Text>
+              <Text className="font-semibold text-base text-accent">Done</Text>
             </Pressable>
           </View>
           <TextInput
             accessibilityLabel="Search timezones"
             autoCapitalize="none"
             autoCorrect={false}
-            className="mx-4 my-4 min-h-[52px] rounded-2xl border border-taupe bg-paper px-4 font-normal text-base text-ink"
+            className="mx-4 my-4 min-h-[52px] rounded-2xl border border-taupe bg-paper px-4 font-normal text-base text-foreground"
             onChangeText={setTimezoneSearch}
             placeholder="Search city or region"
             placeholderTextColor="#8E8E93"
@@ -223,7 +223,7 @@ export default function PreferencesScreen() {
             keyExtractor={(item) => item}
             ListEmptyComponent={
               <View className="items-center px-6 py-12">
-                <Text className="font-medium text-[15px] text-ink">
+                <Text className="font-medium text-[15px] text-foreground">
                   No timezone found
                 </Text>
                 <Pressable
@@ -231,7 +231,7 @@ export default function PreferencesScreen() {
                   className="mt-3 min-h-11 justify-center active:opacity-70"
                   onPress={() => setTimezoneSearch('')}
                 >
-                  <Text className="font-semibold text-sm text-ink underline">
+                  <Text className="font-semibold text-sm text-foreground underline">
                     Clear search
                   </Text>
                 </Pressable>
@@ -255,7 +255,7 @@ export default function PreferencesScreen() {
                 >
                   <Text
                     className={cn(
-                      'flex-1 font-normal text-sm text-ink',
+                      'flex-1 font-normal text-sm text-foreground',
                       selected && 'font-semibold',
                     )}
                   >
