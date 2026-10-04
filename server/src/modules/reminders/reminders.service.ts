@@ -145,6 +145,7 @@ export class RemindersService {
       where: { id: reminderId, userId },
       include: {
         schedules: { orderBy: { revision: 'desc' }, take: 1 },
+        checklistTemplates: { where: { archivedAt: null }, orderBy: { position: 'asc' } },
       },
     });
     if (!reminder) throw new NotFoundException('Reminder not found.');
@@ -154,6 +155,7 @@ export class RemindersService {
       where: { reminderId: reminder.id, scheduleId: schedule.id },
       orderBy: [{ effectiveScheduledAt: 'asc' }, { id: 'asc' }],
       take: 128,
+      include: { checklistItems: { orderBy: { position: 'asc' } } },
     });
 
     return {
@@ -162,6 +164,12 @@ export class RemindersService {
       contextNote: reminder.contextNote,
       lifecycle: reminder.lifecycle,
       revision: reminder.revision,
+      checklist: (reminder.checklistTemplates ?? []).map((item) => ({
+        id: item.id,
+        text: item.text,
+        position: item.position,
+        revision: item.revision,
+      })),
       schedule: {
         id: schedule.id,
         type: schedule.type,
@@ -186,6 +194,19 @@ export class RemindersService {
         localTime: occurrence.localTime.trim(),
         originalScheduledAt: occurrence.originalScheduledAt.toISOString(),
         effectiveScheduledAt: occurrence.effectiveScheduledAt.toISOString(),
+        checklist: (occurrence.checklistItems ?? []).map((item) => ({
+          id: item.id,
+          sourceItemId: item.sourceItemId,
+          text: item.text,
+          position: item.position,
+          checked: item.checkedAt !== null,
+          checkedAt: item.checkedAt?.toISOString() ?? null,
+          revision: item.revision,
+        })),
+        checklistProgress: {
+          checked: (occurrence.checklistItems ?? []).filter((item) => item.checkedAt !== null).length,
+          total: (occurrence.checklistItems ?? []).length,
+        },
       })),
       createdAt: reminder.createdAt.toISOString(),
       updatedAt: reminder.updatedAt.toISOString(),

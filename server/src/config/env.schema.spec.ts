@@ -13,6 +13,7 @@ describe('validateEnvironment', () => {
     JWT_ACCESS_PRIVATE_KEY_BASE64: Buffer.from(privateKey).toString('base64'),
     JWT_ACCESS_PUBLIC_KEY_BASE64: Buffer.from(publicKey).toString('base64'),
     AUTH_AUDIT_PEPPER: 'test-pepper-that-is-at-least-32-characters',
+    CONTEXT_DATA_KEY_BASE64: Buffer.alloc(32, 7).toString('base64'),
   };
 
   it('applies safe defaults and parses numeric configuration', () => {
@@ -34,6 +35,24 @@ describe('validateEnvironment', () => {
         AUTH_AUDIT_PEPPER: undefined,
       }),
     ).toThrow('AUTH_AUDIT_PEPPER');
+  });
+
+  it('requires a dedicated 32-byte context encryption key', () => {
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        CONTEXT_DATA_KEY_BASE64: Buffer.alloc(16).toString('base64'),
+      }),
+    ).toThrow('CONTEXT_DATA_KEY_BASE64');
+  });
+
+  it('rejects non-canonical base64 for the context encryption key', () => {
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        CONTEXT_DATA_KEY_BASE64: `${valid.CONTEXT_DATA_KEY_BASE64}\n`,
+      }),
+    ).toThrow('CONTEXT_DATA_KEY_BASE64');
   });
 
   it('requires transactional email configuration in production', () => {

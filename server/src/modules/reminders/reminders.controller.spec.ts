@@ -4,6 +4,8 @@ import { RemindersController } from './reminders.controller.js';
 import type { ReminderParserService } from './reminder-parser.service.js';
 import type { RemindersService } from './reminders.service.js';
 import type { ReminderTimeService } from './reminder-time.service.js';
+import type { ReminderChecklistService } from './reminder-checklist.service.js';
+import type { ReminderAutomationService } from './reminder-automation.service.js';
 
 describe('RemindersController create response preference', () => {
   const principal: AuthPrincipal = {
@@ -24,6 +26,8 @@ describe('RemindersController create response preference', () => {
       {} as ReminderParserService,
       {} as ReminderTimeService,
       {} as ReminderActionsService,
+      {} as ReminderChecklistService,
+      {} as ReminderAutomationService,
     );
   }
 

@@ -14,6 +14,7 @@ import type {
 import { RecurringEditScopeDto } from './dto/reminder-time.dto.js';
 import { ReminderScheduleService } from './reminder-schedule.service.js';
 import type { ResolvedSchedule } from './reminder-schedule.service.js';
+import { ReminderChecklistService } from './reminder-checklist.service.js';
 
 const MIN_SNOOZE_MS = 5 * 60_000;
 const MAX_SNOOZE_MS = 30 * 24 * 60 * 60_000;
@@ -23,6 +24,7 @@ export class ReminderTimeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly schedules: ReminderScheduleService,
+    private readonly checklist: ReminderChecklistService,
   ) {}
 
   async previewTimezoneChange(userId: string, proposedTimezone: string) {
@@ -165,6 +167,7 @@ export class ReminderTimeService {
           nextEvaluationAt: complete ? null : new Date(newest.scheduledAt),
         },
       });
+      await this.checklist.snapshotScheduledOccurrences(tx, reminderId);
       return result.count;
     }, { isolationLevel: 'Serializable' });
     return {
@@ -323,6 +326,7 @@ export class ReminderTimeService {
           localTime: item.localTime,
         })),
       });
+      await this.checklist.snapshotScheduledOccurrences(tx, reminder.id);
       const event = await tx.reminderEvent.create({
         data: {
           userId: principal.userId,

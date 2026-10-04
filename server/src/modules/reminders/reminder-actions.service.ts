@@ -14,6 +14,7 @@ import type {
   UpdateNudgePolicyDto,
   UpdateReminderContentDto,
 } from './dto/reminder-action.dto.js';
+import { ReminderAutomationService } from './reminder-automation.service.js';
 
 type TerminalAction = 'complete' | 'skip';
 type TerminalLifecycle = 'COMPLETED' | 'SKIPPED';
@@ -21,7 +22,10 @@ type TerminalEvent = 'OCCURRENCE_COMPLETED' | 'OCCURRENCE_SKIPPED';
 
 @Injectable()
 export class ReminderActionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly automations: ReminderAutomationService,
+  ) {}
 
   complete(
     principal: AuthPrincipal,
@@ -174,6 +178,24 @@ export class ReminderActionsService {
           data: { lifecycle: 'CANCELLED', cancelledAt: now },
         });
         await tx.schedule.updateMany({ where: { reminderId }, data: { nextEvaluationAt: null } });
+        await tx.contextTrigger.updateMany({
+          where: { reminderId, lifecycle: 'ACTIVE' },
+          data: { lifecycle: 'PAUSED', unavailableReason: 'REMINDER_DELETED', revision: { increment: 1 } },
+        });
+        const workflowIds = (
+          await tx.reminderWorkflow.findMany({
+            where: { sourceReminderId: reminderId, lifecycle: { in: ['ACTIVE', 'PAUSED'] } },
+            select: { id: true },
+          })
+        ).map((workflow) => workflow.id);
+        await tx.reminderWorkflow.updateMany({
+          where: { id: { in: workflowIds } },
+          data: { lifecycle: 'CANCELLED', revision: { increment: 1 } },
+        });
+        await tx.workflowRun.updateMany({
+          where: { workflowId: { in: workflowIds }, lifecycle: 'ACTIVE' },
+          data: { lifecycle: 'STOPPED', completedAt: now },
+        });
         await tx.nudgePolicy.updateMany({
           where: { reminderId, invalidatedAt: null },
           data: { invalidatedAt: now, invalidationReason: 'REMINDER_DELETED' },
@@ -490,7 +512,14 @@ export class ReminderActionsService {
             },
           },
         });
-        return { occurrence, eventId: event.id, archived };
+        const activatedReminders = await this.automations.advanceWithinTransaction(
+          tx,
+          principal.userId,
+          occurrence,
+          targetLifecycle,
+          now,
+        );
+        return { occurrence, eventId: event.id, archived, activatedReminders };
       }, { isolationLevel: 'Serializable' });
       return {
         occurrenceId,
@@ -499,6 +528,7 @@ export class ReminderActionsService {
         effectiveScheduledAt: result.occurrence.effectiveScheduledAt.toISOString(),
         reminderLifecycle: result.archived ? 'ARCHIVED' : 'ACTIVE',
         eventId: result.eventId,
+        activatedReminders: result.activatedReminders,
         idempotency: { key, replayed: false },
       };
     } catch (error) {

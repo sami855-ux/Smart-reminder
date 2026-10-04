@@ -27,6 +27,15 @@ const optionalEmail = z.preprocess(
   z.string().email().optional(),
 );
 
+const contextDataKey = z.string().refine((value) => {
+  try {
+    const decoded = Buffer.from(value, 'base64');
+    return decoded.length === 32 && decoded.toString('base64') === value;
+  } catch {
+    return false;
+  }
+}, 'CONTEXT_DATA_KEY_BASE64 must be canonical base64 encoding exactly 32 bytes');
+
 export const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
@@ -52,6 +61,7 @@ export const environmentSchema = z.object({
   EMAIL_VERIFICATION_TTL_MINUTES: z.coerce.number().int().min(5).max(1_440).default(60),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(30),
   AUTH_AUDIT_PEPPER: z.string().min(32).max(512),
+  CONTEXT_DATA_KEY_BASE64: contextDataKey,
   AUTH_PUBLIC_APP_URL: z.url().default('http://localhost:8081'),
   SMTP_URL: optionalNonEmptyString,
   SMTP_FROM: optionalEmail,

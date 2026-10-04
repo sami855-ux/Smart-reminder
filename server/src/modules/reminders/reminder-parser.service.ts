@@ -352,9 +352,9 @@ export class ReminderParserService {
         clause: Array.from(match[0].trim()).slice(0, 500).join(''),
         message:
           code === 'LOCATION_TRIGGER_UNAVAILABLE'
-            ? 'Location-based triggers are unavailable in the MVP; choose a time instead.'
+            ? 'Save the reminder with a fallback time, then add the location trigger from reminder details.'
             : code === 'DEVICE_TRIGGER_UNAVAILABLE'
-              ? 'Device-state triggers are unavailable in the MVP; choose a time instead.'
+              ? 'Save the reminder with a fallback time, then add the supported Wi-Fi trigger from reminder details.'
               : 'External integrations are unavailable in the MVP; the clause was kept for review.',
       })),
     );

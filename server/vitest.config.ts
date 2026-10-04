@@ -2,6 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    env: {
+      CONTEXT_DATA_KEY_BASE64: Buffer.alloc(32, 11).toString('base64'),
+    },
     clearMocks: true,
     coverage: {
       exclude: [

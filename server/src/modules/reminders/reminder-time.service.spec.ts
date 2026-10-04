@@ -3,6 +3,11 @@ import { ReminderScheduleTypeDto } from './dto/reminder-schedule.dto.js';
 import { RecurringEditScopeDto } from './dto/reminder-time.dto.js';
 import { ReminderScheduleService } from './reminder-schedule.service.js';
 import { ReminderTimeService } from './reminder-time.service.js';
+import type { ReminderChecklistService } from './reminder-checklist.service.js';
+
+const checklist = {
+  snapshotScheduledOccurrences: vi.fn().mockResolvedValue(undefined),
+} as unknown as ReminderChecklistService;
 
 describe('ReminderTimeService', () => {
   const userId = '10000000-0000-4000-8000-000000000001';
@@ -33,7 +38,7 @@ describe('ReminderTimeService', () => {
         ]),
       },
     } as unknown as PrismaService;
-    const service = new ReminderTimeService(prisma, new ReminderScheduleService());
+    const service = new ReminderTimeService(prisma, new ReminderScheduleService(), checklist);
 
     const result = await service.previewTimezoneChange(userId, 'America/New_York');
 
@@ -97,7 +102,7 @@ describe('ReminderTimeService', () => {
       },
       $transaction: vi.fn(async (operation: (client: typeof tx) => unknown) => operation(tx)),
     } as unknown as PrismaService;
-    const service = new ReminderTimeService(prisma, new ReminderScheduleService());
+    const service = new ReminderTimeService(prisma, new ReminderScheduleService(), checklist);
 
     const result = await service.editSchedule(
       { userId, sessionId },
@@ -177,7 +182,7 @@ describe('ReminderTimeService', () => {
       },
       $transaction: vi.fn(async (operation: (client: typeof tx) => unknown) => operation(tx)),
     } as unknown as PrismaService;
-    const service = new ReminderTimeService(prisma, new ReminderScheduleService());
+    const service = new ReminderTimeService(prisma, new ReminderScheduleService(), checklist);
 
     const result = await service.editSchedule(
       { userId, sessionId },
@@ -259,7 +264,7 @@ describe('ReminderTimeService', () => {
       },
       $transaction: vi.fn(async (operation: (client: typeof tx) => unknown) => operation(tx)),
     } as unknown as PrismaService;
-    const service = new ReminderTimeService(prisma, new ReminderScheduleService());
+    const service = new ReminderTimeService(prisma, new ReminderScheduleService(), checklist);
 
     const result = await service.materializeCurrentHorizon(userId, reminderId);
 
@@ -305,7 +310,7 @@ describe('ReminderTimeService', () => {
       schedule: { findUnique: vi.fn().mockResolvedValue({ timezone: 'Africa/Addis_Ababa' }) },
       $transaction: vi.fn(async (operation: (client: typeof tx) => unknown) => operation(tx)),
     } as unknown as PrismaService;
-    const service = new ReminderTimeService(prisma, new ReminderScheduleService());
+    const service = new ReminderTimeService(prisma, new ReminderScheduleService(), checklist);
 
     const result = await service.snooze(
       { userId, sessionId },

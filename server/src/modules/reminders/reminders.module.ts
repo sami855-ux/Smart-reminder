@@ -7,6 +7,8 @@ import { RemindersController } from './reminders.controller.js';
 import { RemindersService } from './reminders.service.js';
 import { ReminderActionsService } from './reminder-actions.service.js';
 import { ReminderPurgeService } from './reminder-purge.service.js';
+import { ReminderChecklistService } from './reminder-checklist.service.js';
+import { ReminderAutomationService } from './reminder-automation.service.js';
 
 @Module({
   imports: [AuthModule],
@@ -18,6 +20,8 @@ import { ReminderPurgeService } from './reminder-purge.service.js';
     RemindersService,
     ReminderActionsService,
     ReminderPurgeService,
+    ReminderChecklistService,
+    ReminderAutomationService,
   ],
   exports: [ReminderScheduleService],
 })

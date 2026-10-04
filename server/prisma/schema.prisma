@@ -82,6 +82,55 @@ enum ReminderEventType {
   NOTIFICATION_CANCELLED
   NOTIFICATION_OPENED
   NOTIFICATION_ACTED_ON
+  CHECKLIST_UPDATED
+  CHECKLIST_ITEM_CHECKED
+  CHECKLIST_ITEM_UNCHECKED
+  WORKFLOW_CREATED
+  WORKFLOW_STEP_ACTIVATED
+  WORKFLOW_COMPLETED
+  CONTEXT_TRIGGER_CREATED
+  CONTEXT_TRIGGER_FIRED
+}
+
+enum WorkflowLifecycle {
+  ACTIVE
+  PAUSED
+  CANCELLED
+}
+
+enum WorkflowRunLifecycle {
+  ACTIVE
+  COMPLETED
+  STOPPED
+}
+
+enum WorkflowStepCondition {
+  PREVIOUS_COMPLETED
+  ALL_CHECKLIST_COMPLETED
+}
+
+enum WorkflowStepRunLifecycle {
+  ACTIVE
+  COMPLETED
+  STOPPED
+}
+
+enum ContextTriggerType {
+  LOCATION_ARRIVE
+  LOCATION_LEAVE
+  WIFI_CONNECT
+}
+
+enum ContextTriggerLifecycle {
+  ACTIVE
+  PAUSED
+  UNAVAILABLE
+}
+
+enum TriggerEvaluationOutcome {
+  FIRED
+  SUPPRESSED
+  REJECTED
 }
 
 enum ReminderActorType {
@@ -138,6 +187,9 @@ model User {
   deviceInstallations    DeviceInstallation[]
   notificationPreference NotificationPreference?
   notificationAttempts   NotificationAttempt[]
+  workflows              ReminderWorkflow[]
+  contextTriggers        ContextTrigger[]
+  triggerEvaluations     TriggerEvaluation[]
 
   @@map("users")
 }
@@ -160,6 +212,10 @@ model Reminder {
   createRequests       ReminderCreateRequest[]
   nudgePolicies        NudgePolicy[]
   notificationAttempts NotificationAttempt[]
+  checklistTemplates   ReminderChecklistItem[]
+  sourceWorkflows      ReminderWorkflow[]      @relation("WorkflowSourceReminder")
+  generatedStepRun     WorkflowStepRun?        @relation("WorkflowGeneratedReminder")
+  contextTriggers      ContextTrigger[]
 
   @@index([userId, lifecycle, createdAt])
   @@index([lifecycle, purgeAfter])
@@ -195,30 +251,187 @@ model Schedule {
 }
 
 model ReminderOccurrence {
-  id                   String                @id @default(uuid()) @db.Uuid
-  reminderId           String                @map("reminder_id") @db.Uuid
-  scheduleId           String                @map("schedule_id") @db.Uuid
-  scheduleRevision     Int                   @map("schedule_revision")
+  id                   String                    @id @default(uuid()) @db.Uuid
+  reminderId           String                    @map("reminder_id") @db.Uuid
+  scheduleId           String                    @map("schedule_id") @db.Uuid
+  scheduleRevision     Int                       @map("schedule_revision")
   sequence             Int
-  occurrenceKey        String                @map("occurrence_key") @db.VarChar(160)
-  originalScheduledAt  DateTime              @map("original_scheduled_at") @db.Timestamptz(3)
-  effectiveScheduledAt DateTime              @map("effective_scheduled_at") @db.Timestamptz(3)
-  localDate            String                @map("local_date") @db.Char(10)
-  localTime            String                @map("local_time") @db.Char(5)
-  lifecycle            OccurrenceLifecycle   @default(SCHEDULED)
-  completedAt          DateTime?             @map("completed_at") @db.Timestamptz(3)
-  skippedAt            DateTime?             @map("skipped_at") @db.Timestamptz(3)
-  cancelledAt          DateTime?             @map("cancelled_at") @db.Timestamptz(3)
-  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
-  reminder             Reminder              @relation(fields: [reminderId], references: [id], onDelete: Cascade)
-  schedule             Schedule              @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  occurrenceKey        String                    @map("occurrence_key") @db.VarChar(160)
+  originalScheduledAt  DateTime                  @map("original_scheduled_at") @db.Timestamptz(3)
+  effectiveScheduledAt DateTime                  @map("effective_scheduled_at") @db.Timestamptz(3)
+  localDate            String                    @map("local_date") @db.Char(10)
+  localTime            String                    @map("local_time") @db.Char(5)
+  lifecycle            OccurrenceLifecycle       @default(SCHEDULED)
+  completedAt          DateTime?                 @map("completed_at") @db.Timestamptz(3)
+  skippedAt            DateTime?                 @map("skipped_at") @db.Timestamptz(3)
+  cancelledAt          DateTime?                 @map("cancelled_at") @db.Timestamptz(3)
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  reminder             Reminder                  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  schedule             Schedule                  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   events               ReminderEvent[]
   notificationAttempts NotificationAttempt[]
+  checklistItems       OccurrenceChecklistItem[]
+  sourceWorkflowRuns   WorkflowRun[]             @relation("WorkflowSourceOccurrence")
+  generatedStepRun     WorkflowStepRun?          @relation("WorkflowGeneratedOccurrence")
+  triggerEvaluation    TriggerEvaluation?
 
   @@unique([scheduleId, occurrenceKey])
   @@unique([scheduleId, sequence])
   @@index([reminderId, lifecycle, effectiveScheduledAt])
   @@map("reminder_occurrences")
+}
+
+model ReminderChecklistItem {
+  id              String                    @id @default(uuid()) @db.Uuid
+  reminderId      String                    @map("reminder_id") @db.Uuid
+  text            String                    @db.VarChar(240)
+  position        Int
+  revision        Int                       @default(1)
+  archivedAt      DateTime?                 @map("archived_at") @db.Timestamptz(3)
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  reminder        Reminder                  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  occurrenceItems OccurrenceChecklistItem[]
+
+  @@index([reminderId, archivedAt, position])
+  @@map("reminder_checklist_items")
+}
+
+model OccurrenceChecklistItem {
+  id           String                 @id @default(uuid()) @db.Uuid
+  occurrenceId String                 @map("occurrence_id") @db.Uuid
+  sourceItemId String?                @map("source_item_id") @db.Uuid
+  text         String                 @db.VarChar(240)
+  position     Int
+  checkedAt    DateTime?              @map("checked_at") @db.Timestamptz(3)
+  revision     Int                    @default(1)
+  createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  occurrence   ReminderOccurrence     @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  sourceItem   ReminderChecklistItem? @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+
+  @@unique([occurrenceId, sourceItemId])
+  @@index([occurrenceId, position])
+  @@map("occurrence_checklist_items")
+}
+
+model ReminderWorkflow {
+  id               String            @id @default(uuid()) @db.Uuid
+  userId           String            @map("user_id") @db.Uuid
+  sourceReminderId String            @map("source_reminder_id") @db.Uuid
+  name             String            @db.VarChar(120)
+  lifecycle        WorkflowLifecycle @default(ACTIVE)
+  revision         Int               @default(1)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceReminder   Reminder          @relation("WorkflowSourceReminder", fields: [sourceReminderId], references: [id], onDelete: Cascade)
+  steps            WorkflowStep[]
+  runs             WorkflowRun[]
+
+  @@index([userId, lifecycle, createdAt])
+  @@index([sourceReminderId, lifecycle])
+  @@map("reminder_workflows")
+}
+
+model WorkflowStep {
+  id           String                @id @default(uuid()) @db.Uuid
+  workflowId   String                @map("workflow_id") @db.Uuid
+  position     Int
+  title        String                @db.VarChar(120)
+  contextNote  String?               @map("context_note") @db.VarChar(2000)
+  delayMinutes Int                   @default(0) @map("delay_minutes")
+  condition    WorkflowStepCondition @default(PREVIOUS_COMPLETED)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  workflow     ReminderWorkflow      @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  runs         WorkflowStepRun[]
+
+  @@unique([workflowId, position])
+  @@map("workflow_steps")
+}
+
+model WorkflowRun {
+  id                 String               @id @default(uuid()) @db.Uuid
+  workflowId         String               @map("workflow_id") @db.Uuid
+  sourceOccurrenceId String               @map("source_occurrence_id") @db.Uuid
+  lifecycle          WorkflowRunLifecycle @default(ACTIVE)
+  currentPosition    Int                  @default(0) @map("current_position")
+  startedAt          DateTime             @default(now()) @map("started_at") @db.Timestamptz(3)
+  completedAt        DateTime?            @map("completed_at") @db.Timestamptz(3)
+  workflow           ReminderWorkflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceOccurrence   ReminderOccurrence   @relation("WorkflowSourceOccurrence", fields: [sourceOccurrenceId], references: [id], onDelete: Cascade)
+  stepRuns           WorkflowStepRun[]
+
+  @@unique([workflowId, sourceOccurrenceId])
+  @@index([workflowId, lifecycle])
+  @@map("workflow_runs")
+}
+
+model WorkflowStepRun {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  runId                 String                   @map("run_id") @db.Uuid
+  stepId                String                   @map("step_id") @db.Uuid
+  generatedReminderId   String                   @unique @map("generated_reminder_id") @db.Uuid
+  generatedOccurrenceId String                   @unique @map("generated_occurrence_id") @db.Uuid
+  lifecycle             WorkflowStepRunLifecycle @default(ACTIVE)
+  activatedAt           DateTime                 @default(now()) @map("activated_at") @db.Timestamptz(3)
+  completedAt           DateTime?                @map("completed_at") @db.Timestamptz(3)
+  run                   WorkflowRun              @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step                  WorkflowStep             @relation(fields: [stepId], references: [id], onDelete: Restrict)
+  generatedReminder     Reminder                 @relation("WorkflowGeneratedReminder", fields: [generatedReminderId], references: [id], onDelete: Cascade)
+  generatedOccurrence   ReminderOccurrence       @relation("WorkflowGeneratedOccurrence", fields: [generatedOccurrenceId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, stepId])
+  @@index([runId, lifecycle])
+  @@map("workflow_step_runs")
+}
+
+model ContextTrigger {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  userId             String                  @map("user_id") @db.Uuid
+  reminderId         String                  @map("reminder_id") @db.Uuid
+  type               ContextTriggerType
+  lifecycle          ContextTriggerLifecycle @default(ACTIVE)
+  label              String                  @db.VarChar(120)
+  locationCiphertext String?                 @map("location_ciphertext") @db.Text
+  locationKeyVersion Int?                    @map("location_key_version")
+  radiusMeters       Int?                    @map("radius_meters")
+  networkFingerprint String?                 @map("network_fingerprint") @db.Char(64)
+  cooldownSeconds    Int                     @default(300) @map("cooldown_seconds")
+  revision           Int                     @default(1)
+  lastTriggeredAt    DateTime?               @map("last_triggered_at") @db.Timestamptz(3)
+  unavailableReason  String?                 @map("unavailable_reason") @db.VarChar(120)
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminder           Reminder                @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  evaluations        TriggerEvaluation[]
+
+  @@index([userId, lifecycle, type])
+  @@index([reminderId, lifecycle])
+  @@map("context_triggers")
+}
+
+model TriggerEvaluation {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  userId              String                   @map("user_id") @db.Uuid
+  triggerId           String                   @map("trigger_id") @db.Uuid
+  installationId      String                   @map("installation_id") @db.Uuid
+  eventKey            String                   @map("event_key") @db.VarChar(128)
+  requestHash         String                   @map("request_hash") @db.Char(64)
+  occurredAt          DateTime                 @map("occurred_at") @db.Timestamptz(3)
+  receivedAt          DateTime                 @default(now()) @map("received_at") @db.Timestamptz(3)
+  outcome             TriggerEvaluationOutcome
+  reason              String?                  @db.VarChar(120)
+  createdOccurrenceId String?                  @unique @map("created_occurrence_id") @db.Uuid
+  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trigger             ContextTrigger           @relation(fields: [triggerId], references: [id], onDelete: Cascade)
+  installation        DeviceInstallation       @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  createdOccurrence   ReminderOccurrence?      @relation(fields: [createdOccurrenceId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, eventKey])
+  @@index([triggerId, receivedAt])
+  @@map("trigger_evaluations")
 }
 
 model ReminderEvent {
@@ -290,6 +503,7 @@ model DeviceInstallation {
   updatedAt            DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
   user                 User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   notificationAttempts NotificationAttempt[]
+  triggerEvaluations   TriggerEvaluation[]
 
   @@index([userId, revokedAt, lastSeenAt])
   @@map("device_installations")

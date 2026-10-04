@@ -39,6 +39,13 @@ import {
   UpdateReminderContentDto,
 } from './dto/reminder-action.dto.js';
 import {
+  CreateContextTriggerDto,
+  CreateWorkflowDto,
+  ReplaceChecklistDto,
+  ReportTriggerEventDto,
+  ToggleChecklistItemDto,
+} from './dto/reminder-automation.dto.js';
+import {
   EditReminderScheduleDto,
   SnoozeOccurrenceDto,
   TimezonePreviewDto,
@@ -52,6 +59,8 @@ import { ReminderParserService } from './reminder-parser.service.js';
 import { ReminderActionsService } from './reminder-actions.service.js';
 import { ReminderTimeService } from './reminder-time.service.js';
 import { RemindersService } from './reminders.service.js';
+import { ReminderChecklistService } from './reminder-checklist.service.js';
+import { ReminderAutomationService } from './reminder-automation.service.js';
 
 @ApiTags('Reminders')
 @ApiBearerAuth()
@@ -63,6 +72,8 @@ export class RemindersController {
     private readonly parser: ReminderParserService,
     private readonly time: ReminderTimeService,
     private readonly actions: ReminderActionsService,
+    private readonly checklist: ReminderChecklistService,
+    private readonly automations: ReminderAutomationService,
   ) {}
 
   @Post('reminders/preview')
@@ -153,6 +164,94 @@ export class RemindersController {
     @Body() dto: UpdateReminderContentDto,
   ) {
     return this.actions.updateContent(principal, reminderId, idempotencyKey, dto);
+  }
+
+  @Patch('reminders/:reminderId/checklist')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Replace the reminder checklist template and future occurrence snapshots' })
+  @ApiOkResponse({ description: 'Updated checklist template and reminder revision' })
+  replaceChecklist(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: ReplaceChecklistDto,
+  ) {
+    return this.checklist.replace(principal, reminderId, idempotencyKey, dto);
+  }
+
+  @Patch('reminder-occurrences/:occurrenceId/checklist-items/:itemId')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Check or uncheck one occurrence checklist item' })
+  @ApiOkResponse({ description: 'Updated occurrence checklist item' })
+  toggleChecklistItem(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('occurrenceId', new ParseUUIDPipe()) occurrenceId: string,
+    @Param('itemId', new ParseUUIDPipe()) itemId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: ToggleChecklistItemDto,
+  ) {
+    return this.checklist.toggle(principal, occurrenceId, itemId, idempotencyKey, dto);
+  }
+
+  @Post('reminders/:reminderId/workflows')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Create a bounded sequential workflow that starts after completion' })
+  @ApiCreatedResponse({ description: 'Workflow and ordered reminder steps' })
+  createWorkflow(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: CreateWorkflowDto,
+  ) {
+    return this.automations.createWorkflow(principal, reminderId, idempotencyKey, dto);
+  }
+
+  @Get('reminders/:reminderId/workflows')
+  @ApiOperation({ summary: 'List workflows bound to a reminder' })
+  listWorkflows(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+  ) {
+    return this.automations.listWorkflows(principal.userId, reminderId);
+  }
+
+  @Post('reminders/:reminderId/context-triggers')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Create an encrypted location or keyed Wi-Fi trigger' })
+  @ApiCreatedResponse({ description: 'Capability-aware context trigger' })
+  createContextTrigger(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: CreateContextTriggerDto,
+  ) {
+    return this.automations.createContextTrigger(principal, reminderId, idempotencyKey, dto);
+  }
+
+  @Get('context-triggers')
+  @ApiOperation({ summary: 'List the current user context triggers for device reconciliation' })
+  listAllContextTriggers(@CurrentUser() principal: AuthPrincipal) {
+    return this.automations.listContextTriggers(principal.userId);
+  }
+
+  @Get('reminders/:reminderId/context-triggers')
+  @ApiOperation({ summary: 'List context triggers attached to one reminder template' })
+  listContextTriggers(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('reminderId', new ParseUUIDPipe()) reminderId: string,
+  ) {
+    return this.automations.listContextTriggers(principal.userId, reminderId);
+  }
+
+  @Post('context-triggers/:triggerId/events')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Idempotently report a device-observed context trigger event' })
+  reportContextTriggerEvent(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('triggerId', new ParseUUIDPipe()) triggerId: string,
+    @Body() dto: ReportTriggerEventDto,
+  ) {
+    return this.automations.reportTriggerEvent(principal, triggerId, dto);
   }
 
   @Delete('reminders/:reminderId')

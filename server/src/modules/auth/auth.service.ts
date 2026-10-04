@@ -220,10 +220,19 @@ export class AuthService {
       orderBy: { createdAt: 'asc' },
       include: {
         schedules: { orderBy: { revision: 'asc' } },
-        occurrences: { orderBy: { originalScheduledAt: 'asc' } },
+        occurrences: {
+          orderBy: { originalScheduledAt: 'asc' },
+          include: { checklistItems: { orderBy: { position: 'asc' } } },
+        },
         events: { orderBy: { createdAt: 'asc' } },
         nudgePolicies: { orderBy: { scheduleRevision: 'asc' } },
         notificationAttempts: { orderBy: { createdAt: 'asc' } },
+        checklistTemplates: { orderBy: { position: 'asc' } },
+        sourceWorkflows: {
+          orderBy: { createdAt: 'asc' },
+          include: { steps: { orderBy: { position: 'asc' } } },
+        },
+        contextTriggers: { orderBy: { createdAt: 'asc' } },
       },
     });
     const [notificationPreferences, deviceInstallations] = await Promise.all([
@@ -238,7 +247,7 @@ export class AuthService {
     });
     return {
       format: 'smart-reminder-export',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       account: {
         id: user.id,
@@ -280,6 +289,13 @@ export class AuthService {
         createdAt: reminder.createdAt.toISOString(),
         updatedAt: reminder.updatedAt.toISOString(),
         deletedAt: reminder.deletedAt?.toISOString() ?? null,
+        checklist: reminder.checklistTemplates.map((item) => ({
+          id: item.id,
+          text: item.text,
+          position: item.position,
+          revision: item.revision,
+          archivedAt: item.archivedAt?.toISOString() ?? null,
+        })),
         schedules: reminder.schedules.map((schedule) => ({
           id: schedule.id,
           type: schedule.type,
@@ -304,6 +320,41 @@ export class AuthService {
           localTime: occurrence.localTime.trim(),
           originalScheduledAt: occurrence.originalScheduledAt.toISOString(),
           effectiveScheduledAt: occurrence.effectiveScheduledAt.toISOString(),
+          checklist: occurrence.checklistItems.map((item) => ({
+            id: item.id,
+            sourceItemId: item.sourceItemId,
+            text: item.text,
+            position: item.position,
+            checkedAt: item.checkedAt?.toISOString() ?? null,
+            revision: item.revision,
+          })),
+        })),
+        workflows: reminder.sourceWorkflows.map((workflow) => ({
+          id: workflow.id,
+          name: workflow.name,
+          lifecycle: workflow.lifecycle,
+          revision: workflow.revision,
+          steps: workflow.steps.map((step) => ({
+            id: step.id,
+            position: step.position,
+            title: step.title,
+            contextNote: step.contextNote,
+            delayMinutes: step.delayMinutes,
+            condition: step.condition,
+          })),
+        })),
+        contextTriggers: reminder.contextTriggers.map((trigger) => ({
+          id: trigger.id,
+          type: trigger.type,
+          lifecycle: trigger.lifecycle,
+          label: trigger.label,
+          locationConfigured: trigger.locationCiphertext !== null,
+          radiusMeters: trigger.radiusMeters,
+          networkConfigured: trigger.networkFingerprint !== null,
+          cooldownSeconds: trigger.cooldownSeconds,
+          revision: trigger.revision,
+          lastTriggeredAt: trigger.lastTriggeredAt?.toISOString() ?? null,
+          unavailableReason: trigger.unavailableReason,
         })),
         events: reminder.events.map((event) => ({
           id: event.id,
@@ -366,6 +417,18 @@ export class AuthService {
       await tx.deviceInstallation.updateMany({
         where: { userId: user.id, revokedAt: null },
         data: { revokedAt: now, revision: { increment: 1 } },
+      });
+      await tx.contextTrigger.updateMany({
+        where: { userId: user.id, lifecycle: 'ACTIVE' },
+        data: { lifecycle: 'PAUSED', unavailableReason: 'ACCOUNT_DELETED', revision: { increment: 1 } },
+      });
+      await tx.reminderWorkflow.updateMany({
+        where: { userId: user.id, lifecycle: { in: ['ACTIVE', 'PAUSED'] } },
+        data: { lifecycle: 'CANCELLED', revision: { increment: 1 } },
+      });
+      await tx.workflowRun.updateMany({
+        where: { workflow: { userId: user.id }, lifecycle: 'ACTIVE' },
+        data: { lifecycle: 'STOPPED', completedAt: now },
       });
       await tx.notificationAttempt.updateMany({
         where: { userId: user.id, cancelledAt: null },

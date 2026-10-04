@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { PrismaService } from '../../database/prisma.service.js';
 import type { AuthPrincipal } from '../../common/auth/auth-principal.js';
 import { ReminderActionsService } from './reminder-actions.service.js';
+import type { ReminderAutomationService } from './reminder-automation.service.js';
 
 describe('ReminderActionsService', () => {
   const principal: AuthPrincipal = {
@@ -51,7 +52,10 @@ describe('ReminderActionsService', () => {
       reminderEvent: { findUnique: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
     } as unknown as PrismaService;
-    return { service: new ReminderActionsService(prisma), tx };
+    const automations = {
+      advanceWithinTransaction: vi.fn().mockResolvedValue([]),
+    } as unknown as ReminderAutomationService;
+    return { service: new ReminderActionsService(prisma, automations), tx };
   }
 
   it('completes a due occurrence atomically and archives an exhausted finite series', async () => {

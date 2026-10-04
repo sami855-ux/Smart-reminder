@@ -705,6 +705,315 @@
         ]
       }
     },
+    "/reminders/{reminderId}/checklist": {
+      "patch": {
+        "operationId": "RemindersController_replaceChecklist",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceChecklistDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated checklist template and reminder revision"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace the reminder checklist template and future occurrence snapshots",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminder-occurrences/{occurrenceId}/checklist-items/{itemId}": {
+      "patch": {
+        "operationId": "RemindersController_toggleChecklistItem",
+        "parameters": [
+          {
+            "name": "occurrenceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleChecklistItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated occurrence checklist item"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Check or uncheck one occurrence checklist item",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders/{reminderId}/workflows": {
+      "post": {
+        "operationId": "RemindersController_createWorkflow",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Workflow and ordered reminder steps"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a bounded sequential workflow that starts after completion",
+        "tags": [
+          "Reminders"
+        ]
+      },
+      "get": {
+        "operationId": "RemindersController_listWorkflows",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List workflows bound to a reminder",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/reminders/{reminderId}/context-triggers": {
+      "post": {
+        "operationId": "RemindersController_createContextTrigger",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateContextTriggerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Capability-aware context trigger"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create an encrypted location or keyed Wi-Fi trigger",
+        "tags": [
+          "Reminders"
+        ]
+      },
+      "get": {
+        "operationId": "RemindersController_listContextTriggers",
+        "parameters": [
+          {
+            "name": "reminderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List context triggers attached to one reminder template",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/context-triggers": {
+      "get": {
+        "operationId": "RemindersController_listAllContextTriggers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the current user context triggers for device reconciliation",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/context-triggers/{triggerId}/events": {
+      "post": {
+        "operationId": "RemindersController_reportContextTriggerEvent",
+        "parameters": [
+          {
+            "name": "triggerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportTriggerEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idempotently report a device-observed context trigger event",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
     "/reminders/{reminderId}/events": {
       "get": {
         "operationId": "RemindersController_listEvents",
@@ -2164,6 +2473,199 @@
         },
         "required": [
           "expectedRevision"
+        ]
+      },
+      "ChecklistDefinitionItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "ReplaceChecklistDto": {
+        "type": "object",
+        "properties": {
+          "expectedReminderRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "items": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChecklistDefinitionItemDto"
+            }
+          }
+        },
+        "required": [
+          "expectedReminderRevision",
+          "items"
+        ]
+      },
+      "ToggleChecklistItemDto": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "checked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "checked"
+        ]
+      },
+      "CreateWorkflowStepDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "contextNote": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "delayMinutes": {
+            "type": "object",
+            "minimum": 0,
+            "maximum": 43200,
+            "default": 0
+          },
+          "condition": {
+            "type": "string",
+            "enum": [
+              "PREVIOUS_COMPLETED",
+              "ALL_CHECKLIST_COMPLETED"
+            ],
+            "default": "PREVIOUS_COMPLETED"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "CreateWorkflowDto": {
+        "type": "object",
+        "properties": {
+          "expectedReminderRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "steps": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateWorkflowStepDto"
+            }
+          }
+        },
+        "required": [
+          "expectedReminderRevision",
+          "name",
+          "steps"
+        ]
+      },
+      "CreateContextTriggerDto": {
+        "type": "object",
+        "properties": {
+          "expectedReminderRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "LOCATION_ARRIVE",
+              "LOCATION_LEAVE",
+              "WIFI_CONNECT"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "radiusMeters": {
+            "type": "number",
+            "minimum": 50,
+            "maximum": 5000
+          },
+          "networkName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "writeOnly": true
+          },
+          "cooldownSeconds": {
+            "type": "object",
+            "minimum": 60,
+            "maximum": 86400,
+            "default": 300
+          }
+        },
+        "required": [
+          "expectedReminderRevision",
+          "type",
+          "label"
+        ]
+      },
+      "ReportTriggerEventDto": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventKey": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "networkName": {
+            "type": "string",
+            "maxLength": 128,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "installationId",
+          "eventKey",
+          "occurredAt"
         ]
       },
       "DeleteReminderDto": {
