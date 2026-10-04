@@ -7,10 +7,13 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "entitlements": {
+        "com.apple.developer.networking.wifi-info": true
+      }
     },
     "android": {
-      "permissions": ["SCHEDULE_EXACT_ALARM"],
+      "permissions": ["SCHEDULE_EXACT_ALARM", "ACCESS_FINE_LOCATION", "ACCESS_WIFI_STATE"],
       "adaptiveIcon": {
         "backgroundColor": "#F3F3F0",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -27,9 +30,19 @@
       "expo-router",
       "expo-localization",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Smart Reminder to use your location when you create a location reminder.",
+          "locationAlwaysAndWhenInUsePermission": "Allow Smart Reminder to detect arrival and departure for your active location reminders.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
         "expo-notifications",
         {
-          "defaultChannel": "reminders-v3-default-standard",
+          "defaultChannel": "reminders-v4-alarm-default-standard",
           "color": "#343431"
         }
       ],

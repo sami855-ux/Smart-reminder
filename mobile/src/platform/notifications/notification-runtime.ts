@@ -1,9 +1,11 @@
 import { Platform } from 'react-native';
 
-export const REMINDER_NOTIFICATION_CHANNEL_ID = 'reminders-v3-default-standard';
+export const REMINDER_NOTIFICATION_CHANNEL_ID = 'reminders-v4-alarm-default-standard';
 
 export type NotificationsRuntime = Pick<
   typeof import('expo-notifications'),
+  | 'AndroidAudioContentType'
+  | 'AndroidAudioUsage'
   | 'AndroidImportance'
   | 'AndroidNotificationPriority'
   | 'DEFAULT_ACTION_IDENTIFIER'
@@ -61,6 +63,8 @@ export async function loadNotificationsModule(): Promise<NotificationsRuntime | 
     ]);
 
     return {
+      AndroidAudioContentType: channelTypes.AndroidAudioContentType,
+      AndroidAudioUsage: channelTypes.AndroidAudioUsage,
       AndroidImportance: channelTypes.AndroidImportance,
       AndroidNotificationPriority: notificationTypes.AndroidNotificationPriority,
       DEFAULT_ACTION_IDENTIFIER: emitter.DEFAULT_ACTION_IDENTIFIER,

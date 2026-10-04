@@ -33,6 +33,7 @@ import {
   type NotificationAlertPreferences,
 } from '../platform/notifications/notification-alert-preferences';
 import {
+  presentReminderAlarmNow,
   prepareSelectedNotificationChannel,
   reconcileReminderNotifications,
 } from '../platform/notifications/reminder-notification-scheduler';
@@ -51,6 +52,7 @@ export default function NotificationSettingsScreen() {
   const { showToast } = useToast();
   const [currentInstallationId, setCurrentInstallationId] = useState<string | null>(null);
   const [deviceToRevoke, setDeviceToRevoke] = useState<string | null>(null);
+  const [testAlarmPending, setTestAlarmPending] = useState(false);
   const preferences = useQuery({
     queryKey: notificationPreferencesQueryKey,
     queryFn: getNotificationPreferences,
@@ -176,6 +178,43 @@ export default function NotificationSettingsScreen() {
     }
   }
 
+  async function testSoundAndVibration() {
+    setTestAlarmPending(true);
+    try {
+      const result = await presentReminderAlarmNow(
+        {
+          title: 'Smart Reminder test',
+          body: 'Sound and vibration are ready for your reminders.',
+        },
+        alertPreferences.data,
+      );
+      const soundIsSilent = alertPreferences.data?.sound === 'SILENT';
+      showToast({
+        title:
+          result === 'presented'
+            ? soundIsSilent
+              ? 'Test vibration sent'
+              : 'Test alert sent'
+            : 'Test alert unavailable',
+        message:
+          result === 'presented'
+            ? soundIsSilent
+              ? 'Sound is set to Silent. Select Device sound above for an audible alarm.'
+              : 'If it was silent, check Do Not Disturb, phone volume, and this app’s notification channel.'
+            : 'Use a development build and confirm notification access in system settings.',
+        tone: result === 'presented' ? 'success' : 'error',
+      });
+    } catch (error) {
+      showToast({
+        title: 'Couldn’t send the test alert',
+        message: formErrorMessage(error),
+        tone: 'error',
+      });
+    } finally {
+      setTestAlarmPending(false);
+    }
+  }
+
   return (
     <>
       <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
@@ -229,6 +268,23 @@ export default function NotificationSettingsScreen() {
                   </Pressable>
                 ) : null}
               </View>
+              {alertsAllowed ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: testAlarmPending }}
+                  className={cn(
+                    'mt-2 min-h-11 flex-row items-center justify-center rounded-[12px] bg-ink',
+                    testAlarmPending && 'opacity-50',
+                  )}
+                  disabled={testAlarmPending}
+                  onPress={() => void testSoundAndVibration()}
+                >
+                  <SymbolIcon className="text-kast-lime" name="notification" size={16} />
+                  <Text className="ml-2 font-inter-semibold text-[13px] text-kast-lime">
+                    {testAlarmPending ? 'Sending test…' : 'Test sound & vibration'}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
 
             {Platform.OS === 'android' ? (

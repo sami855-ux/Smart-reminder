@@ -94,6 +94,27 @@ export const storedOccurrenceSchema = z
   })
   .strict();
 
+export const reminderChecklistTemplateSchema = z
+  .object({
+    id: z.uuid(),
+    text: z.string(),
+    position: z.number().int().nonnegative(),
+    revision: z.number().int().positive(),
+  })
+  .strict();
+
+export const occurrenceChecklistItemSchema = z
+  .object({
+    id: z.uuid(),
+    sourceItemId: z.uuid().nullable(),
+    text: z.string(),
+    position: z.number().int().nonnegative(),
+    checked: z.boolean(),
+    checkedAt: z.string().datetime().nullable(),
+    revision: z.number().int().positive(),
+  })
+  .strict();
+
 export const createdReminderSchema = z
   .object({
     id: z.uuid(),
@@ -101,12 +122,23 @@ export const createdReminderSchema = z
     contextNote: z.string().nullable(),
     lifecycle: z.enum(['ACTIVE', 'CANCELLED', 'ARCHIVED']),
     revision: z.number().int().positive(),
+    checklist: z.array(reminderChecklistTemplateSchema),
     schedule: storedScheduleSchema,
     firstOccurrence: storedOccurrenceSchema.extend({
       sequence: z.number().int().positive(),
+      checklist: z.array(occurrenceChecklistItemSchema),
+      checklistProgress: z
+        .object({ checked: z.number().int().nonnegative(), total: z.number().int().nonnegative() })
+        .strict(),
     }),
     occurrences: z.array(
-      storedOccurrenceSchema.extend({ sequence: z.number().int().positive() }),
+      storedOccurrenceSchema.extend({
+        sequence: z.number().int().positive(),
+        checklist: z.array(occurrenceChecklistItemSchema),
+        checklistProgress: z
+          .object({ checked: z.number().int().nonnegative(), total: z.number().int().nonnegative() })
+          .strict(),
+      }),
     ),
     idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
     createdAt: z.string().datetime(),
@@ -149,8 +181,66 @@ export const reminderDetailSchema = z
     contextNote: z.string().nullable(),
     lifecycle: z.enum(['ACTIVE', 'CANCELLED', 'ARCHIVED']),
     revision: z.number().int().positive(),
+    checklist: z.array(reminderChecklistTemplateSchema),
     schedule: storedScheduleSchema,
-    occurrences: z.array(storedOccurrenceSchema.extend({ sequence: z.number().int().positive() })),
+    occurrences: z.array(
+      storedOccurrenceSchema.extend({
+        sequence: z.number().int().positive(),
+        checklist: z.array(occurrenceChecklistItemSchema),
+        checklistProgress: z
+          .object({ checked: z.number().int().nonnegative(), total: z.number().int().nonnegative() })
+          .strict(),
+      }),
+    ),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export const workflowSchema = z
+  .object({
+    id: z.uuid(),
+    sourceReminderId: z.uuid(),
+    name: z.string(),
+    lifecycle: z.enum(['ACTIVE', 'PAUSED', 'CANCELLED']),
+    revision: z.number().int().positive(),
+    steps: z.array(
+      z
+        .object({
+          id: z.uuid(),
+          position: z.number().int().positive(),
+          title: z.string(),
+          contextNote: z.string().nullable(),
+          delayMinutes: z.number().int().nonnegative(),
+          condition: z.enum(['PREVIOUS_COMPLETED', 'ALL_CHECKLIST_COMPLETED']),
+        })
+        .strict(),
+    ),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export const contextTriggerSchema = z
+  .object({
+    id: z.uuid(),
+    reminderId: z.uuid(),
+    type: z.enum(['LOCATION_ARRIVE', 'LOCATION_LEAVE', 'WIFI_CONNECT']),
+    lifecycle: z.enum(['ACTIVE', 'PAUSED', 'UNAVAILABLE']),
+    label: z.string(),
+    location: z
+      .object({
+        latitude: z.number(),
+        longitude: z.number(),
+        radiusMeters: z.number().int(),
+      })
+      .strict()
+      .nullable(),
+    network: z.object({ configured: z.literal(true) }).strict().nullable(),
+    cooldownSeconds: z.number().int().positive(),
+    revision: z.number().int().positive(),
+    lastTriggeredAt: z.string().datetime().nullable(),
+    unavailableReason: z.string().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -230,6 +320,9 @@ export const occurrenceActionResultSchema = z
     effectiveScheduledAt: z.string().datetime().nullable(),
     reminderLifecycle: z.enum(['ACTIVE', 'CANCELLED', 'ARCHIVED']).nullable(),
     eventId: z.uuid(),
+    activatedReminders: z
+      .array(z.object({ reminderId: z.uuid(), occurrenceId: z.uuid() }).strict())
+      .optional(),
     idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
   })
   .strict();
@@ -308,6 +401,10 @@ export type ReminderPreview = z.infer<typeof reminderPreviewSchema>;
 export type CreatedReminder = z.infer<typeof createdReminderSchema>;
 export type OccurrenceListItem = z.infer<typeof occurrenceListItemSchema>;
 export type ReminderDetail = z.infer<typeof reminderDetailSchema>;
+export type ReminderChecklistTemplate = z.infer<typeof reminderChecklistTemplateSchema>;
+export type OccurrenceChecklistItem = z.infer<typeof occurrenceChecklistItemSchema>;
+export type ReminderWorkflow = z.infer<typeof workflowSchema>;
+export type ContextTrigger = z.infer<typeof contextTriggerSchema>;
 export type TimezonePreview = z.infer<typeof timezonePreviewSchema>;
 export type ParseReminderResponse = z.infer<typeof parseReminderResponseSchema>;
 export type OccurrenceActionResult = z.infer<typeof occurrenceActionResultSchema>;

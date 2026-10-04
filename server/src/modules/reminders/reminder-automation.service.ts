@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -11,16 +11,20 @@ import {
   type CreateContextTriggerDto,
   type CreateWorkflowDto,
   type ReportTriggerEventDto,
+  type UpdateContextTriggerLifecycleDto,
+  type UpdateWorkflowLifecycleDto,
 } from './dto/reminder-automation.dto.js';
 import { ReminderScheduleService } from './reminder-schedule.service.js';
 import { ReminderScheduleTypeDto } from './dto/reminder-schedule.dto.js';
 
 type TerminalOutcome = 'COMPLETED' | 'SKIPPED';
+type ContextTriggerDefinition = Omit<CreateContextTriggerDto, 'expectedReminderRevision'>;
 
 @Injectable()
 export class ReminderAutomationService {
   private readonly contextKey: Buffer;
   private readonly fingerprintKey: Buffer;
+  private readonly requestCommitmentKey: Buffer;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -30,6 +34,9 @@ export class ReminderAutomationService {
     this.contextKey = Buffer.from(config.get('CONTEXT_DATA_KEY_BASE64', { infer: true }), 'base64');
     this.fingerprintKey = createHmac('sha256', this.contextKey)
       .update('smart-reminder:wifi-fingerprint-key:v1')
+      .digest();
+    this.requestCommitmentKey = createHmac('sha256', this.contextKey)
+      .update('smart-reminder:context-request-commitment:v1')
       .digest();
   }
 
@@ -125,6 +132,63 @@ export class ReminderAutomationService {
     return { items: items.map((item) => this.workflowResponse(item)) };
   }
 
+  async updateWorkflowLifecycle(
+    principal: AuthPrincipal,
+    workflowId: string,
+    idempotencyKey: string | undefined,
+    dto: UpdateWorkflowLifecycleDto,
+  ) {
+    const key = this.validateKey(idempotencyKey);
+    const requestHash = this.hash({ action: 'update-workflow-lifecycle', workflowId, ...dto });
+    const replay = await this.findEvent(principal.userId, key);
+    if (replay) return this.replayWorkflowLifecycle(replay, requestHash, workflowId, key);
+
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        const current = await tx.reminderWorkflow.findFirst({
+          where: { id: workflowId, userId: principal.userId },
+          include: { steps: { orderBy: { position: 'asc' } } },
+        });
+        if (!current) throw new NotFoundException('Workflow not found.');
+        if (current.lifecycle === 'CANCELLED' || current.revision !== dto.expectedRevision) {
+          throw new ConflictException({
+            code: 'WORKFLOW_STATE_CONFLICT',
+            message: 'The workflow changed. Refresh it before trying again.',
+            details: { workflowId, lifecycle: current.lifecycle, revision: current.revision },
+          });
+        }
+        const updated = await tx.reminderWorkflow.update({
+          where: { id: workflowId },
+          data: { lifecycle: dto.lifecycle, revision: { increment: 1 } },
+          include: { steps: { orderBy: { position: 'asc' } } },
+        });
+        const event = await tx.reminderEvent.create({
+          data: {
+            userId: principal.userId,
+            reminderId: current.sourceReminderId,
+            actorType: 'USER',
+            actorId: principal.userId,
+            type: 'WORKFLOW_LIFECYCLE_CHANGED',
+            idempotencyKey: key,
+            requestHash,
+            metadata: { workflowId, lifecycle: updated.lifecycle, workflowRevision: updated.revision },
+          },
+        });
+        return { workflow: updated, eventId: event.id };
+      }, { isolationLevel: 'Serializable' });
+      return {
+        ...this.workflowResponse(result.workflow),
+        eventId: result.eventId,
+        idempotency: { key, replayed: false },
+      };
+    } catch (error) {
+      if (!this.isUnique(error)) throw error;
+      const raced = await this.findEvent(principal.userId, key);
+      if (!raced) throw error;
+      return this.replayWorkflowLifecycle(raced, requestHash, workflowId, key);
+    }
+  }
+
   async createContextTrigger(
     principal: AuthPrincipal,
     reminderId: string,
@@ -132,18 +196,15 @@ export class ReminderAutomationService {
     dto: CreateContextTriggerDto,
   ) {
     const key = this.validateKey(idempotencyKey);
-    this.assertTriggerShape(dto);
-    const requestHash = this.hash({ action: 'create-context-trigger', reminderId, ...dto });
+    const requestHash = this.hash({
+      action: 'create-context-trigger',
+      reminderId,
+      expectedReminderRevision: dto.expectedReminderRevision,
+      triggerCommitment: this.contextTriggerRequestCommitment(principal.userId, dto),
+    });
     const replay = await this.findEvent(principal.userId, key);
     if (replay) return this.replayTrigger(replay, requestHash, key);
-    const locationCiphertext =
-      dto.type === ContextTriggerTypeDto.WIFI_CONNECT
-        ? null
-        : this.encryptLocation(dto.latitude!, dto.longitude!);
-    const networkFingerprint =
-      dto.type === ContextTriggerTypeDto.WIFI_CONNECT
-        ? this.networkFingerprint(principal.userId, dto.networkName!)
-        : null;
+    const prepared = this.prepareContextTriggerData(principal.userId, dto);
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
@@ -163,12 +224,13 @@ export class ReminderAutomationService {
           data: {
             userId: principal.userId,
             reminderId,
+            id: prepared.id,
             type: dto.type,
             label: dto.label,
-            locationCiphertext,
-            locationKeyVersion: locationCiphertext ? 1 : null,
+            locationCiphertext: prepared.locationCiphertext,
+            locationKeyVersion: prepared.locationKeyVersion,
             radiusMeters: dto.radiusMeters ?? null,
-            networkFingerprint,
+            networkFingerprint: prepared.networkFingerprint,
             cooldownSeconds: dto.cooldownSeconds ?? 300,
           },
         });
@@ -211,6 +273,101 @@ export class ReminderAutomationService {
       orderBy: { createdAt: 'desc' },
     });
     return { items: items.map((item) => this.triggerResponse(item)) };
+  }
+
+  prepareContextTriggerData(userId: string, dto: ContextTriggerDefinition, triggerId = randomUUID()) {
+    this.assertTriggerShape(dto);
+    const locationCiphertext =
+      dto.type === ContextTriggerTypeDto.WIFI_CONNECT
+        ? null
+        : this.encryptLocation(userId, triggerId, dto.latitude!, dto.longitude!);
+    return {
+      id: triggerId,
+      locationCiphertext,
+      locationKeyVersion: locationCiphertext ? 2 : null,
+      networkFingerprint:
+        dto.type === ContextTriggerTypeDto.WIFI_CONNECT
+          ? this.networkFingerprint(userId, dto.networkName!)
+          : null,
+    };
+  }
+
+  contextTriggerRequestCommitment(userId: string, dto: ContextTriggerDefinition) {
+    const canonical = {
+      userId,
+      type: dto.type,
+      label: dto.label.normalize('NFC'),
+      latitude: dto.latitude ?? null,
+      longitude: dto.longitude ?? null,
+      radiusMeters: dto.radiusMeters ?? null,
+      networkName: dto.networkName?.normalize('NFC') ?? null,
+      cooldownSeconds: dto.cooldownSeconds ?? 300,
+    };
+    return createHmac('sha256', this.requestCommitmentKey)
+      .update(JSON.stringify(canonical))
+      .digest('hex');
+  }
+
+  internalEventKey(purpose: string, sourceKey: string) {
+    return createHmac('sha256', this.requestCommitmentKey)
+      .update(`${purpose}:${sourceKey}`)
+      .digest('hex')
+      .slice(0, 48);
+  }
+
+  async updateContextTriggerLifecycle(
+    principal: AuthPrincipal,
+    triggerId: string,
+    idempotencyKey: string | undefined,
+    dto: UpdateContextTriggerLifecycleDto,
+  ) {
+    const key = this.validateKey(idempotencyKey);
+    const requestHash = this.hash({ action: 'update-context-trigger-lifecycle', triggerId, ...dto });
+    const replay = await this.findEvent(principal.userId, key);
+    if (replay) return this.replayTriggerLifecycle(replay, requestHash, triggerId, key);
+
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        const current = await tx.contextTrigger.findFirst({
+          where: { id: triggerId, userId: principal.userId },
+        });
+        if (!current) throw new NotFoundException('Context trigger not found.');
+        if (current.lifecycle === 'UNAVAILABLE' || current.revision !== dto.expectedRevision) {
+          throw new ConflictException({
+            code: 'CONTEXT_TRIGGER_STATE_CONFLICT',
+            message: 'The context trigger changed. Refresh it before trying again.',
+            details: { triggerId, lifecycle: current.lifecycle, revision: current.revision },
+          });
+        }
+        const updated = await tx.contextTrigger.update({
+          where: { id: triggerId },
+          data: { lifecycle: dto.lifecycle, revision: { increment: 1 } },
+        });
+        const event = await tx.reminderEvent.create({
+          data: {
+            userId: principal.userId,
+            reminderId: current.reminderId,
+            actorType: 'USER',
+            actorId: principal.userId,
+            type: 'CONTEXT_TRIGGER_LIFECYCLE_CHANGED',
+            idempotencyKey: key,
+            requestHash,
+            metadata: { triggerId, lifecycle: updated.lifecycle, triggerRevision: updated.revision },
+          },
+        });
+        return { trigger: updated, eventId: event.id };
+      }, { isolationLevel: 'Serializable' });
+      return {
+        ...this.triggerResponse(result.trigger),
+        eventId: result.eventId,
+        idempotency: { key, replayed: false },
+      };
+    } catch (error) {
+      if (!this.isUnique(error)) throw error;
+      const raced = await this.findEvent(principal.userId, key);
+      if (!raced) throw error;
+      return this.replayTriggerLifecycle(raced, requestHash, triggerId, key);
+    }
   }
 
   async reportTriggerEvent(
@@ -352,6 +509,17 @@ export class ReminderAutomationService {
         await tx.workflowRun.update({
           where: { id: parent.runId },
           data: { lifecycle: 'COMPLETED', completedAt: now },
+        });
+        await tx.reminderEvent.create({
+          data: {
+            userId,
+            reminderId: occurrence.reminderId,
+            occurrenceId: occurrence.id,
+            actorType: 'SYSTEM',
+            type: 'WORKFLOW_COMPLETED',
+            idempotencyKey: `workflow-complete-${this.hash(parent.runId).slice(0, 48)}`,
+            metadata: { runId: parent.runId, workflowId: parent.run.workflowId },
+          },
         });
       } else if (await this.conditionMatches(tx, next.condition, occurrence.id)) {
         generated.push(await this.activateWorkflowStep(tx, userId, parent.runId, next, now));
@@ -594,11 +762,13 @@ export class ReminderAutomationService {
 
   private triggerResponse(trigger: {
     id: string;
+    userId: string;
     reminderId: string;
     type: string;
     lifecycle: string;
     label: string;
     locationCiphertext: string | null;
+    locationKeyVersion: number | null;
     radiusMeters: number | null;
     cooldownSeconds: number;
     revision: number;
@@ -607,7 +777,14 @@ export class ReminderAutomationService {
     createdAt: Date;
     updatedAt: Date;
   }) {
-    const location = trigger.locationCiphertext ? this.decryptLocation(trigger.locationCiphertext) : null;
+    const location = trigger.locationCiphertext
+      ? this.decryptLocation(
+          trigger.userId,
+          trigger.id,
+          trigger.locationCiphertext,
+          trigger.locationKeyVersion ?? 1,
+        )
+      : null;
     return {
       id: trigger.id,
       reminderId: trigger.reminderId,
@@ -656,7 +833,7 @@ export class ReminderAutomationService {
     };
   }
 
-  private assertTriggerShape(dto: CreateContextTriggerDto) {
+  private assertTriggerShape(dto: ContextTriggerDefinition) {
     if (dto.type === ContextTriggerTypeDto.WIFI_CONNECT) {
       if (!dto.networkName) throw new BadRequestException('networkName is required for a Wi-Fi trigger.');
       if (dto.latitude !== undefined || dto.longitude !== undefined || dto.radiusMeters !== undefined) {
@@ -672,17 +849,29 @@ export class ReminderAutomationService {
     }
   }
 
-  private encryptLocation(latitude: number, longitude: number) {
+  private encryptLocation(userId: string, triggerId: string, latitude: number, longitude: number) {
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.contextKey, iv);
+    cipher.setAAD(Buffer.from(`smart-reminder:location:${userId}:${triggerId}`, 'utf8'));
     const encrypted = Buffer.concat([cipher.update(JSON.stringify({ latitude, longitude }), 'utf8'), cipher.final()]);
     return [iv, cipher.getAuthTag(), encrypted].map((value) => value.toString('base64url')).join('.');
   }
 
-  private decryptLocation(value: string): { latitude: number; longitude: number } {
+  private decryptLocation(
+    userId: string,
+    triggerId: string,
+    value: string,
+    keyVersion: number,
+  ): { latitude: number; longitude: number } {
     try {
       const [iv, tag, encrypted] = value.split('.').map((part) => Buffer.from(part!, 'base64url'));
       const decipher = createDecipheriv('aes-256-gcm', this.contextKey, iv!);
+      decipher.setAAD(Buffer.from(
+        keyVersion >= 2
+          ? `smart-reminder:location:${userId}:${triggerId}`
+          : `smart-reminder:location:${userId}`,
+        'utf8',
+      ));
       decipher.setAuthTag(tag!);
       return JSON.parse(Buffer.concat([decipher.update(encrypted!), decipher.final()]).toString('utf8')) as {
         latitude: number;
@@ -695,7 +884,7 @@ export class ReminderAutomationService {
 
   private networkFingerprint(userId: string, networkName: string) {
     return createHmac('sha256', this.fingerprintKey)
-      .update(`${userId}:${networkName.normalize('NFC').trim().toLocaleLowerCase('en-US')}`)
+      .update(`${userId}:${networkName.normalize('NFC')}`)
       .digest('hex');
   }
 
@@ -748,6 +937,45 @@ export class ReminderAutomationService {
     return {
       ...this.triggerResponse(trigger),
       reminderRevision: reminder?.revision ?? 1,
+      eventId: event.id,
+      idempotency: { key, replayed: true },
+    };
+  }
+
+  private async replayWorkflowLifecycle(
+    event: { id: string; requestHash: string | null },
+    requestHash: string,
+    workflowId: string,
+    key: string,
+  ) {
+    if (event.requestHash !== requestHash) {
+      throw new ConflictException('This idempotency key was already used with a different request.');
+    }
+    const workflow = await this.prisma.reminderWorkflow.findUnique({
+      where: { id: workflowId },
+      include: { steps: { orderBy: { position: 'asc' } } },
+    });
+    if (!workflow) throw new NotFoundException('Workflow not found.');
+    return {
+      ...this.workflowResponse(workflow),
+      eventId: event.id,
+      idempotency: { key, replayed: true },
+    };
+  }
+
+  private async replayTriggerLifecycle(
+    event: { id: string; requestHash: string | null },
+    requestHash: string,
+    triggerId: string,
+    key: string,
+  ) {
+    if (event.requestHash !== requestHash) {
+      throw new ConflictException('This idempotency key was already used with a different request.');
+    }
+    const trigger = await this.prisma.contextTrigger.findUnique({ where: { id: triggerId } });
+    if (!trigger) throw new NotFoundException('Context trigger not found.');
+    return {
+      ...this.triggerResponse(trigger),
       eventId: event.id,
       idempotency: { key, replayed: true },
     };

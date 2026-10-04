@@ -69,4 +69,56 @@ describe('CreateReminderDto', () => {
       'confirmedResolvedAt',
     );
   });
+
+  it('accepts location and exact Wi-Fi triggers during reminder creation', async () => {
+    const dto = plainToInstance(CreateReminderDto, {
+      title: 'Bring documents',
+      confirmed: true,
+      confirmedResolvedAt: '2026-09-27T06:00:00.000Z',
+      schedule: {
+        type: 'ONE_TIME',
+        localDate: '2026-09-27',
+        localTime: '09:00',
+        timezone: 'Africa/Addis_Ababa',
+      },
+      contextTriggers: [
+        {
+          type: 'LOCATION_ARRIVE',
+          label: 'Office',
+          latitude: 9.03,
+          longitude: 38.74,
+          radiusMeters: 150,
+        },
+        {
+          type: 'WIFI_CONNECT',
+          label: 'Office network',
+          networkName: ' Private Office Wi-Fi ',
+        },
+      ],
+    });
+
+    expect(await validate(dto)).toEqual([]);
+    expect(dto.contextTriggers?.[1]?.networkName).toBe(' Private Office Wi-Fi ');
+  });
+
+  it('limits initial context triggers to ten', async () => {
+    const dto = plainToInstance(CreateReminderDto, {
+      title: 'Bring documents',
+      confirmed: true,
+      confirmedResolvedAt: '2026-09-27T06:00:00.000Z',
+      schedule: {
+        type: 'ONE_TIME',
+        localDate: '2026-09-27',
+        localTime: '09:00',
+        timezone: 'Africa/Addis_Ababa',
+      },
+      contextTriggers: Array.from({ length: 11 }, (_, index) => ({
+        type: 'WIFI_CONNECT',
+        label: `Network ${index + 1}`,
+        networkName: `SSID-${index + 1}`,
+      })),
+    });
+
+    expect((await validate(dto)).map((error) => error.property)).toContain('contextTriggers');
+  });
 });

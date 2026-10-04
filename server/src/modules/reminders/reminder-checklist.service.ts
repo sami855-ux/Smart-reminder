@@ -156,8 +156,8 @@ export class ReminderChecklistService {
         include: { occurrence: { select: { reminderId: true, lifecycle: true } } },
       });
       if (!item) throw new NotFoundException('Checklist item not found.');
-      if (item.occurrence.lifecycle === 'CANCELLED' || item.occurrence.lifecycle === 'SKIPPED') {
-        throw new ConflictException('Checklist items on cancelled or skipped occurrences are read-only.');
+      if (item.occurrence.lifecycle !== 'SCHEDULED') {
+        throw new ConflictException('Checklist items on completed, cancelled, or skipped occurrences are read-only.');
       }
       if (item.revision !== dto.expectedRevision) {
         throw new ConflictException({

@@ -25,6 +25,9 @@ import { RFC3339_INSTANT_MESSAGE, RFC3339_INSTANT_PATTERN } from './rfc3339-inst
 const normalizeLine = (value: unknown) =>
   typeof value === 'string' ? value.normalize('NFC').trim().replace(/\s+/gu, ' ') : value;
 
+const normalizeNetworkName = (value: unknown) =>
+  typeof value === 'string' ? value.normalize('NFC') : value;
+
 export class ChecklistDefinitionItemDto {
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
@@ -115,10 +118,42 @@ export class CreateWorkflowDto {
   steps!: CreateWorkflowStepDto[];
 }
 
+export enum EditableWorkflowLifecycleDto {
+  ACTIVE = 'ACTIVE',
+  PAUSED = 'PAUSED',
+}
+
+export class UpdateWorkflowLifecycleDto {
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedRevision!: number;
+
+  @ApiProperty({ enum: EditableWorkflowLifecycleDto })
+  @IsEnum(EditableWorkflowLifecycleDto)
+  lifecycle!: EditableWorkflowLifecycleDto;
+}
+
 export enum ContextTriggerTypeDto {
   LOCATION_ARRIVE = 'LOCATION_ARRIVE',
   LOCATION_LEAVE = 'LOCATION_LEAVE',
   WIFI_CONNECT = 'WIFI_CONNECT',
+}
+
+export enum EditableContextTriggerLifecycleDto {
+  ACTIVE = 'ACTIVE',
+  PAUSED = 'PAUSED',
+}
+
+export class UpdateContextTriggerLifecycleDto {
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedRevision!: number;
+
+  @ApiProperty({ enum: EditableContextTriggerLifecycleDto })
+  @IsEnum(EditableContextTriggerLifecycleDto)
+  lifecycle!: EditableContextTriggerLifecycleDto;
 }
 
 export class CreateContextTriggerDto {
@@ -157,7 +192,7 @@ export class CreateContextTriggerDto {
   @ApiPropertyOptional({ minLength: 1, maxLength: 128, writeOnly: true })
   @ValidateIf((value: CreateContextTriggerDto) => value.type === ContextTriggerTypeDto.WIFI_CONNECT)
   @IsString()
-  @Transform(({ value }) => normalizeLine(value))
+  @Transform(({ value }) => normalizeNetworkName(value))
   @UnicodeLength(1, 128)
   networkName?: string;
 
@@ -188,7 +223,7 @@ export class ReportTriggerEventDto {
   @ApiPropertyOptional({ maxLength: 128, writeOnly: true })
   @IsOptional()
   @IsString()
-  @Transform(({ value }) => normalizeLine(value))
+  @Transform(({ value }) => normalizeNetworkName(value))
   @UnicodeLength(1, 128)
   networkName?: string;
 }

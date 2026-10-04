@@ -127,6 +127,10 @@ export async function requestNotificationPermission(): Promise<PermissionSnapsho
       await notifications.setNotificationChannelAsync(REMINDER_NOTIFICATION_CHANNEL_ID, {
         name: 'Reminders',
         description: 'Alerts for reminders you create in Smart Reminder.',
+        audioAttributes: {
+          usage: notifications.AndroidAudioUsage.ALARM,
+          contentType: notifications.AndroidAudioContentType.SONIFICATION,
+        },
         enableVibrate: true,
         importance: notifications.AndroidImportance.MAX,
         sound: 'default',

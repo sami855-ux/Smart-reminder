@@ -14,6 +14,10 @@ import {
   reminderMutationResultSchema,
   reminderPreviewSchema,
   timezonePreviewSchema,
+  contextTriggerSchema,
+  occurrenceChecklistItemSchema,
+  reminderChecklistTemplateSchema,
+  workflowSchema,
   type CreatedReminder,
   type NudgePolicy,
   type OccurrenceActionResult,
@@ -23,20 +27,42 @@ import {
   type ReminderPreview,
   type ReminderScheduleInput,
   type TimezonePreview,
+  type ContextTrigger,
+  type ReminderWorkflow,
 } from './reminder.schemas';
 
 export type ReminderContentInput = {
   title: string;
   contextNote?: string;
+  checklist?: { text: string }[];
+  workflow?: {
+    name: string;
+    steps: {
+      title: string;
+      contextNote?: string;
+      delayMinutes?: number;
+      condition?: 'PREVIOUS_COMPLETED' | 'ALL_CHECKLIST_COMPLETED';
+    }[];
+  };
+  contextTriggers?: {
+    type: 'LOCATION_ARRIVE' | 'LOCATION_LEAVE' | 'WIFI_CONNECT';
+    label: string;
+    latitude?: number;
+    longitude?: number;
+    radiusMeters?: number;
+    networkName?: string;
+    cooldownSeconds?: number;
+  }[];
   schedule: ReminderScheduleInput;
 };
 
 export async function previewReminder(
   input: ReminderContentInput,
 ): Promise<ReminderPreview> {
+  const { workflow: _workflow, contextTriggers: _contextTriggers, ...previewInput } = input;
   try {
     return await requestWithAccessToken(
-      { method: 'POST', url: '/reminders/preview', data: input },
+      { method: 'POST', url: '/reminders/preview', data: previewInput },
       reminderPreviewSchema,
     );
   } catch (error) {
@@ -259,6 +285,250 @@ export async function getReminder(reminderId: string): Promise<ReminderDetail> {
     return await requestWithAccessToken(
       { method: 'GET', url: `/reminders/${reminderId}` },
       reminderDetailSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+const checklistMutationSchema = z
+  .object({
+    reminderId: z.uuid(),
+    reminderRevision: z.number().int().positive(),
+    items: z.array(reminderChecklistTemplateSchema),
+    eventId: z.uuid(),
+    idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+  })
+  .strict();
+
+export async function replaceReminderChecklist(input: {
+  reminderId: string;
+  expectedReminderRevision: number;
+  items: { id?: string; text: string }[];
+  idempotencyKey: string;
+}) {
+  const { reminderId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'PATCH',
+        url: `/reminders/${reminderId}/checklist`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      checklistMutationSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+const checklistToggleSchema = z
+  .object({
+    occurrenceId: z.uuid(),
+    item: occurrenceChecklistItemSchema,
+    eventId: z.uuid(),
+    idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+  })
+  .strict();
+
+export async function toggleOccurrenceChecklistItem(input: {
+  occurrenceId: string;
+  itemId: string;
+  expectedRevision: number;
+  checked: boolean;
+  idempotencyKey: string;
+}) {
+  const { occurrenceId, itemId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'PATCH',
+        url: `/reminder-occurrences/${occurrenceId}/checklist-items/${itemId}`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      checklistToggleSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+const workflowMutationSchema = workflowSchema.extend({
+  sourceReminderRevision: z.number().int().positive(),
+  eventId: z.uuid(),
+  idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+});
+const workflowPageSchema = z.object({ items: z.array(workflowSchema) }).strict();
+
+export async function createReminderWorkflow(input: {
+  reminderId: string;
+  expectedReminderRevision: number;
+  name: string;
+  steps: {
+    title: string;
+    contextNote?: string;
+    delayMinutes?: number;
+    condition?: 'PREVIOUS_COMPLETED' | 'ALL_CHECKLIST_COMPLETED';
+  }[];
+  idempotencyKey: string;
+}): Promise<ReminderWorkflow> {
+  const { reminderId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'POST',
+        url: `/reminders/${reminderId}/workflows`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      workflowMutationSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function listReminderWorkflows(reminderId: string): Promise<ReminderWorkflow[]> {
+  try {
+    const page = await requestWithAccessToken(
+      { method: 'GET', url: `/reminders/${reminderId}/workflows` },
+      workflowPageSchema,
+    );
+    return page.items;
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+const workflowLifecycleMutationSchema = workflowSchema.extend({
+  eventId: z.uuid(),
+  idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+});
+
+export async function updateReminderWorkflowLifecycle(input: {
+  workflowId: string;
+  expectedRevision: number;
+  lifecycle: 'ACTIVE' | 'PAUSED';
+  idempotencyKey: string;
+}): Promise<ReminderWorkflow> {
+  const { workflowId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'PATCH',
+        url: `/workflows/${workflowId}/lifecycle`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      workflowLifecycleMutationSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+const triggerMutationSchema = contextTriggerSchema.extend({
+  reminderRevision: z.number().int().positive(),
+  eventId: z.uuid(),
+  idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+});
+const triggerPageSchema = z.object({ items: z.array(contextTriggerSchema) }).strict();
+
+export async function createContextTrigger(input: {
+  reminderId: string;
+  expectedReminderRevision: number;
+  type: 'LOCATION_ARRIVE' | 'LOCATION_LEAVE' | 'WIFI_CONNECT';
+  label: string;
+  latitude?: number;
+  longitude?: number;
+  radiusMeters?: number;
+  networkName?: string;
+  cooldownSeconds?: number;
+  idempotencyKey: string;
+}): Promise<ContextTrigger> {
+  const { reminderId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'POST',
+        url: `/reminders/${reminderId}/context-triggers`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      triggerMutationSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+export async function listContextTriggers(reminderId?: string): Promise<ContextTrigger[]> {
+  try {
+    const page = await requestWithAccessToken(
+      {
+        method: 'GET',
+        url: reminderId ? `/reminders/${reminderId}/context-triggers` : '/context-triggers',
+      },
+      triggerPageSchema,
+    );
+    return page.items;
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+const triggerLifecycleMutationSchema = contextTriggerSchema.extend({
+  eventId: z.uuid(),
+  idempotency: z.object({ key: z.string(), replayed: z.boolean() }).strict(),
+});
+
+export async function updateContextTriggerLifecycle(input: {
+  triggerId: string;
+  expectedRevision: number;
+  lifecycle: 'ACTIVE' | 'PAUSED';
+  idempotencyKey: string;
+}): Promise<ContextTrigger> {
+  const { triggerId, idempotencyKey, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      {
+        method: 'PATCH',
+        url: `/context-triggers/${triggerId}/lifecycle`,
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data,
+      },
+      triggerLifecycleMutationSchema,
+    );
+  } catch (error) {
+    throw toApiError(error);
+  }
+}
+
+const triggerEventResultSchema = z
+  .object({
+    evaluationId: z.uuid(),
+    triggerId: z.uuid(),
+    outcome: z.enum(['FIRED', 'SUPPRESSED', 'REJECTED']),
+    reason: z.string().nullable(),
+    reminder: z.unknown().nullable(),
+    replayed: z.boolean(),
+  })
+  .strict();
+
+export async function reportContextTriggerEvent(input: {
+  triggerId: string;
+  installationId: string;
+  eventKey: string;
+  occurredAt: string;
+  networkName?: string;
+}) {
+  const { triggerId, ...data } = input;
+  try {
+    return await requestWithAccessToken(
+      { method: 'POST', url: `/context-triggers/${triggerId}/events`, data },
+      triggerEventResultSchema,
     );
   } catch (error) {
     throw toApiError(error);

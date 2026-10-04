@@ -1,5 +1,6 @@
 import '../../global.css';
 
+import { useEffect } from 'react';
 import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
 import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
@@ -20,7 +21,9 @@ import { OnboardingProvider } from '../onboarding/onboarding-context';
 import { queryClient } from '../api/query-client';
 import { useForegroundReminderAlarm } from '../platform/notifications/foreground-reminder-alarm';
 import { useNotificationNavigation } from '../platform/notifications/notification-navigation';
+import { prepareSelectedNotificationChannel } from '../platform/notifications/reminder-notification-scheduler';
 import { ThemeProvider, useAppTheme } from '../theme/theme-context';
+import { useContextTriggerRuntime } from '../platform/device-triggers/context-trigger-runtime';
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -58,6 +61,11 @@ function AppShell() {
   const { colors, isDark } = useAppTheme();
   useNotificationNavigation();
   useForegroundReminderAlarm();
+  useContextTriggerRuntime();
+
+  useEffect(() => {
+    void prepareSelectedNotificationChannel().catch(() => undefined);
+  }, []);
 
   return (
     <>

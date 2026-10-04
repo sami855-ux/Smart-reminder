@@ -6,6 +6,7 @@ import { useAuth } from '../../auth/AuthProvider';
 import { getNotificationPreferences } from '../../preferences/preferences.api';
 import { listReminderOccurrences } from '../../reminders/reminder.api';
 import { getNotificationAlertPreferences } from './notification-alert-preferences';
+import { presentReminderAlarmNow } from './reminder-notification-scheduler';
 
 const RECENT_DUE_WINDOW_MS = 2 * 60_000;
 const MAX_REFRESH_MS = 60_000;
@@ -72,10 +73,25 @@ export function useForegroundReminderAlarm(): void {
             const occurrenceKey = `${due.id}:${due.scheduleRevision}:${due.effectiveScheduledAt}`;
             if (!openedOccurrences.has(occurrenceKey) && !pathname.startsWith('/alarm/')) {
               openedOccurrences.add(occurrenceKey);
-              router.push({
-                pathname: '/alarm/[occurrenceId]',
-                params: { occurrenceId: due.id, reminderId: due.reminderId },
-              });
+              const privacy = accountPreferences?.lockScreenPrivacy;
+              await presentReminderAlarmNow(
+                {
+                  title: privacy === 'PRIVATE' ? 'Smart Reminder' : due.title,
+                  body:
+                    privacy === 'PRIVATE'
+                      ? 'You have a reminder.'
+                      : privacy === 'TITLE_ONLY'
+                        ? 'Your reminder is due now.'
+                        : due.contextNote ?? 'Your reminder is due now.',
+                },
+                alertPreferences,
+              );
+              if (active) {
+                router.push({
+                  pathname: '/alarm/[occurrenceId]',
+                  params: { occurrenceId: due.id, reminderId: due.reminderId },
+                });
+              }
             }
           }
 

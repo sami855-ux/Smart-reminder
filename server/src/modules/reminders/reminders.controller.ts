@@ -44,6 +44,8 @@ import {
   ReplaceChecklistDto,
   ReportTriggerEventDto,
   ToggleChecklistItemDto,
+  UpdateContextTriggerLifecycleDto,
+  UpdateWorkflowLifecycleDto,
 } from './dto/reminder-automation.dto.js';
 import {
   EditReminderScheduleDto,
@@ -215,6 +217,18 @@ export class RemindersController {
     return this.automations.listWorkflows(principal.userId, reminderId);
   }
 
+  @Patch('workflows/:workflowId/lifecycle')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Pause or resume a completion workflow with optimistic concurrency' })
+  updateWorkflowLifecycle(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: UpdateWorkflowLifecycleDto,
+  ) {
+    return this.automations.updateWorkflowLifecycle(principal, workflowId, idempotencyKey, dto);
+  }
+
   @Post('reminders/:reminderId/context-triggers')
   @ApiHeader({ name: 'Idempotency-Key', required: true })
   @ApiOperation({ summary: 'Create an encrypted location or keyed Wi-Fi trigger' })
@@ -232,6 +246,18 @@ export class RemindersController {
   @ApiOperation({ summary: 'List the current user context triggers for device reconciliation' })
   listAllContextTriggers(@CurrentUser() principal: AuthPrincipal) {
     return this.automations.listContextTriggers(principal.userId);
+  }
+
+  @Patch('context-triggers/:triggerId/lifecycle')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiOperation({ summary: 'Pause or resume a context trigger with optimistic concurrency' })
+  updateContextTriggerLifecycle(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('triggerId', new ParseUUIDPipe()) triggerId: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() dto: UpdateContextTriggerLifecycleDto,
+  ) {
+    return this.automations.updateContextTriggerLifecycle(principal, triggerId, idempotencyKey, dto);
   }
 
   @Get('reminders/:reminderId/context-triggers')

@@ -61,6 +61,43 @@ export type ReminderSchedulingResult =
   | { status: 'unavailable'; count: 0 }
   | { status: 'failed'; count: number };
 
+export type ImmediateAlarmResult = 'presented' | 'unavailable' | 'failed';
+
+export async function presentReminderAlarmNow(
+  input: { title: string; body: string },
+  alertPreferences?: NotificationAlertPreferences,
+): Promise<ImmediateAlarmResult> {
+  const notifications = await loadNotificationsModule();
+  if (!notifications) return 'unavailable';
+
+  try {
+    const preferences =
+      alertPreferences ?? (await getCachedNotificationAlertPreferences());
+    await ensureNotificationSetup(notifications, preferences);
+    await notifications.scheduleNotificationAsync({
+      content: {
+        title: input.title,
+        body: input.body,
+        sound: preferences.sound === 'SILENT' ? false : 'default',
+        ...(Platform.OS === 'android'
+          ? { priority: notifications.AndroidNotificationPriority.MAX }
+          : {}),
+        ...(Platform.OS === 'ios' && preferences.alertStyle === 'ALARM'
+          ? { interruptionLevel: 'timeSensitive' as const }
+          : {}),
+        data: { alertStyle: 'ALARM_FALLBACK' },
+      },
+      trigger:
+        Platform.OS === 'android'
+          ? { channelId: notificationChannelId(preferences) }
+          : null,
+    });
+    return 'presented';
+  } catch {
+    return 'failed';
+  }
+}
+
 export function scheduleReminderNotifications(
   reminder: ReminderDetail,
   options: ReminderSchedulingOptions = {},
@@ -449,8 +486,20 @@ async function ensureAndroidChannel(
   if (Platform.OS !== 'android') return;
   const pattern = notificationVibrationPattern(preferences.vibration);
   await notifications.setNotificationChannelAsync(notificationChannelId(preferences), {
-    name: `Reminders · ${soundLabel(preferences)} · ${vibrationLabel(preferences)}`,
+    name: [
+      'Reminders',
+      preferences.alertStyle === 'ALARM' ? 'Alarm' : 'Notification',
+      soundLabel(preferences),
+      vibrationLabel(preferences),
+    ].join(' · '),
     description: 'Alerts for reminders you create in Smart Reminder.',
+    audioAttributes: {
+      usage:
+        preferences.alertStyle === 'ALARM'
+          ? notifications.AndroidAudioUsage.ALARM
+          : notifications.AndroidAudioUsage.NOTIFICATION,
+      contentType: notifications.AndroidAudioContentType.SONIFICATION,
+    },
     enableVibrate: preferences.vibration !== 'OFF',
     importance: notifications.AndroidImportance.MAX,
     sound: preferences.sound === 'SILENT' ? null : 'default',

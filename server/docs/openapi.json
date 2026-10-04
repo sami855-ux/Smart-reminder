@@ -881,6 +881,53 @@
         ]
       }
     },
+    "/workflows/{workflowId}/lifecycle": {
+      "patch": {
+        "operationId": "RemindersController_updateWorkflowLifecycle",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkflowLifecycleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pause or resume a completion workflow with optimistic concurrency",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
     "/reminders/{reminderId}/context-triggers": {
       "post": {
         "operationId": "RemindersController_createContextTrigger",
@@ -970,6 +1017,53 @@
           }
         ],
         "summary": "List the current user context triggers for device reconciliation",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/context-triggers/{triggerId}/lifecycle": {
+      "patch": {
+        "operationId": "RemindersController_updateContextTriggerLifecycle",
+        "parameters": [
+          {
+            "name": "triggerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateContextTriggerLifecycleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pause or resume a context trigger with optimistic concurrency",
         "tags": [
           "Reminders"
         ]
@@ -1923,6 +2017,19 @@
           "timezone"
         ]
       },
+      "CreateReminderChecklistItemDto": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
       "PreviewReminderDto": {
         "type": "object",
         "properties": {
@@ -1937,6 +2044,13 @@
           },
           "schedule": {
             "$ref": "#/components/schemas/ReminderScheduleDto"
+          },
+          "checklist": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateReminderChecklistItemDto"
+            }
           }
         },
         "required": [
@@ -2091,6 +2205,108 @@
           "persisted"
         ]
       },
+      "CreateWorkflowStepDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "contextNote": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "delayMinutes": {
+            "type": "object",
+            "minimum": 0,
+            "maximum": 43200,
+            "default": 0
+          },
+          "condition": {
+            "type": "string",
+            "enum": [
+              "PREVIOUS_COMPLETED",
+              "ALL_CHECKLIST_COMPLETED"
+            ],
+            "default": "PREVIOUS_COMPLETED"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "CreateInitialWorkflowDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "steps": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateWorkflowStepDto"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ]
+      },
+      "CreateInitialContextTriggerDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "LOCATION_ARRIVE",
+              "LOCATION_LEAVE",
+              "WIFI_CONNECT"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "radiusMeters": {
+            "type": "number",
+            "minimum": 50,
+            "maximum": 5000
+          },
+          "networkName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "writeOnly": true
+          },
+          "cooldownSeconds": {
+            "type": "object",
+            "minimum": 60,
+            "maximum": 86400,
+            "default": 300
+          }
+        },
+        "required": [
+          "type",
+          "label"
+        ]
+      },
       "CreateReminderDto": {
         "type": "object",
         "properties": {
@@ -2106,6 +2322,13 @@
           "schedule": {
             "$ref": "#/components/schemas/ReminderScheduleDto"
           },
+          "checklist": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateReminderChecklistItemDto"
+            }
+          },
           "confirmed": {
             "type": "boolean",
             "description": "Affirms that the user reviewed and explicitly confirmed the structured preview.",
@@ -2116,6 +2339,16 @@
             "description": "The resolved first-occurrence instant returned by preview and explicitly confirmed by the user.",
             "example": "2026-09-27T06:00:00.000Z",
             "format": "date-time"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/CreateInitialWorkflowDto"
+          },
+          "contextTriggers": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateInitialContextTriggerDto"
+            }
           }
         },
         "required": [
@@ -2528,37 +2761,6 @@
           "checked"
         ]
       },
-      "CreateWorkflowStepDto": {
-        "type": "object",
-        "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "contextNote": {
-            "type": "string",
-            "maxLength": 2000
-          },
-          "delayMinutes": {
-            "type": "object",
-            "minimum": 0,
-            "maximum": 43200,
-            "default": 0
-          },
-          "condition": {
-            "type": "string",
-            "enum": [
-              "PREVIOUS_COMPLETED",
-              "ALL_CHECKLIST_COMPLETED"
-            ],
-            "default": "PREVIOUS_COMPLETED"
-          }
-        },
-        "required": [
-          "title"
-        ]
-      },
       "CreateWorkflowDto": {
         "type": "object",
         "properties": {
@@ -2584,6 +2786,26 @@
           "expectedReminderRevision",
           "name",
           "steps"
+        ]
+      },
+      "UpdateWorkflowLifecycleDto": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "PAUSED"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "lifecycle"
         ]
       },
       "CreateContextTriggerDto": {
@@ -2638,6 +2860,26 @@
           "expectedReminderRevision",
           "type",
           "label"
+        ]
+      },
+      "UpdateContextTriggerLifecycleDto": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": {
+            "type": "number",
+            "minimum": 1
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "PAUSED"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "lifecycle"
         ]
       },
       "ReportTriggerEventDto": {

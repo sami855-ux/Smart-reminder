@@ -15,12 +15,15 @@ import type {
 import type { ListReminderOccurrencesDto } from './dto/reminder-query.dto.js';
 import { OccurrenceListViewDto } from './dto/reminder-action.dto.js';
 import { ReminderScheduleService } from './reminder-schedule.service.js';
+import { ReminderAutomationService } from './reminder-automation.service.js';
 
 const reminderInclude = {
   schedules: { orderBy: { revision: 'asc' as const }, take: 1 },
+  checklistTemplates: { where: { archivedAt: null }, orderBy: { position: 'asc' as const } },
   occurrences: {
     orderBy: [{ scheduleRevision: 'asc' as const }, { sequence: 'asc' as const }],
     take: 128,
+    include: { checklistItems: { orderBy: { position: 'asc' as const } } },
   },
 } satisfies Prisma.ReminderInclude;
 
@@ -31,6 +34,7 @@ export class RemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly schedules: ReminderScheduleService,
+    private readonly automations: ReminderAutomationService,
   ) {}
 
   preview(dto: PreviewReminderDto, now = new Date()) {
@@ -223,11 +227,16 @@ export class RemindersService {
     const canonicalWeekdays = [...new Set((dto.schedule.weekdays ?? []).map(Number))].sort(
       (left, right) => left - right,
     );
-    const requestHash = this.requestHash(dto, canonicalWeekdays);
+    const requestHash = this.requestHash(principal.userId, dto, canonicalWeekdays);
     const existing = await this.findCreateRequest(principal.userId, key);
     if (existing) {
       return this.replay(existing.requestHash, requestHash, existing.reminder, key);
     }
+    const preparedTriggers = (dto.contextTriggers ?? []).map((trigger) => ({
+      trigger,
+      secured: this.automations.prepareContextTriggerData(principal.userId, trigger),
+    }));
+    const finalReminderRevision = 1 + (dto.workflow ? 1 : 0) + preparedTriggers.length;
     const schedule = this.schedules.resolve(dto.schedule, now);
     const confirmedResolvedAt = new Date(dto.confirmedResolvedAt).toISOString();
     if (confirmedResolvedAt !== schedule.resolvedAt) {
@@ -257,6 +266,7 @@ export class RemindersService {
             userId: principal.userId,
             title: dto.title,
             ...(dto.contextNote ? { contextNote: dto.contextNote } : {}),
+            ...(finalReminderRevision > 1 ? { revision: finalReminderRevision } : {}),
           },
         });
         const storedSchedule = await tx.schedule.create({
@@ -309,6 +319,96 @@ export class RemindersService {
             })),
           });
         }
+        if (dto.checklist?.length) {
+          const templates = [] as Array<{ id: string; text: string; position: number }>;
+          for (const [position, item] of dto.checklist.entries()) {
+            templates.push(await tx.reminderChecklistItem.create({
+              data: { reminderId: reminder.id, text: item.text, position },
+            }));
+          }
+          const materialized = await tx.reminderOccurrence.findMany({
+            where: { reminderId: reminder.id },
+            select: { id: true },
+          });
+          await tx.occurrenceChecklistItem.createMany({
+            data: materialized.flatMap((item) => templates.map((template) => ({
+              occurrenceId: item.id,
+              sourceItemId: template.id,
+              text: template.text,
+              position: template.position,
+            }))),
+          });
+        }
+        let workflowId: string | null = null;
+        if (dto.workflow) {
+          const workflow = await tx.reminderWorkflow.create({
+            data: {
+              userId: principal.userId,
+              sourceReminderId: reminder.id,
+              name: dto.workflow.name,
+              steps: {
+                create: dto.workflow.steps.map((step, index) => ({
+                  position: index + 1,
+                  title: step.title,
+                  contextNote: step.contextNote?.normalize('NFC').trim() || null,
+                  delayMinutes: step.delayMinutes ?? 0,
+                  condition: step.condition ?? 'PREVIOUS_COMPLETED',
+                })),
+              },
+            },
+          });
+          workflowId = workflow.id;
+          await tx.reminderEvent.create({
+            data: {
+              userId: principal.userId,
+              reminderId: reminder.id,
+              actorType: 'USER',
+              actorId: principal.userId,
+              type: 'WORKFLOW_CREATED',
+              idempotencyKey: `initial-workflow-${createHash('sha256').update(key).digest('hex').slice(0, 48)}`,
+              requestHash,
+              metadata: {
+                workflowId: workflow.id,
+                stepCount: dto.workflow.steps.length,
+                reminderRevision: 2,
+                createdWithReminder: true,
+              },
+            },
+          });
+        }
+        for (const [index, prepared] of preparedTriggers.entries()) {
+          const trigger = await tx.contextTrigger.create({
+            data: {
+              userId: principal.userId,
+              reminderId: reminder.id,
+              id: prepared.secured.id,
+              type: prepared.trigger.type,
+              label: prepared.trigger.label,
+              locationCiphertext: prepared.secured.locationCiphertext,
+              locationKeyVersion: prepared.secured.locationKeyVersion,
+              radiusMeters: prepared.trigger.radiusMeters ?? null,
+              networkFingerprint: prepared.secured.networkFingerprint,
+              cooldownSeconds: prepared.trigger.cooldownSeconds ?? 300,
+            },
+          });
+          await tx.reminderEvent.create({
+            data: {
+              userId: principal.userId,
+              reminderId: reminder.id,
+              actorType: 'USER',
+              actorId: principal.userId,
+              type: 'CONTEXT_TRIGGER_CREATED',
+              idempotencyKey: `initial-trigger-${this.automations.internalEventKey('initial-trigger', `${key}:${index}`)}`,
+              requestHash,
+              metadata: {
+                triggerId: trigger.id,
+                triggerType: trigger.type,
+                reminderRevision: 1 + (dto.workflow ? 1 : 0) + index + 1,
+                createdWithReminder: true,
+              },
+            },
+          });
+        }
         await tx.reminderEvent.create({
           data: {
             userId: principal.userId,
@@ -323,6 +423,10 @@ export class RemindersService {
               scheduleRevision: 1,
               firstOccurrenceAt: schedule.firstOccurrence.scheduledAt,
               materializedOccurrenceCount: occurrences.length,
+              checklistItemCount: dto.checklist?.length ?? 0,
+              workflowId,
+              contextTriggerCount: preparedTriggers.length,
+              reminderRevision: finalReminderRevision,
             },
           },
         });
@@ -410,6 +514,20 @@ export class RemindersService {
         localTime: string;
         originalScheduledAt: Date;
         effectiveScheduledAt: Date;
+        checklistItems: Array<{
+          id: string;
+          sourceItemId: string | null;
+          text: string;
+          position: number;
+          checkedAt: Date | null;
+          revision: number;
+        }>;
+      }>;
+      checklistTemplates: Array<{
+        id: string;
+        text: string;
+        position: number;
+        revision: number;
       }>;
     },
     key: string,
@@ -426,6 +544,12 @@ export class RemindersService {
       contextNote: reminder.contextNote,
       lifecycle: reminder.lifecycle,
       revision: reminder.revision,
+      checklist: reminder.checklistTemplates.map((item) => ({
+        id: item.id,
+        text: item.text,
+        position: item.position,
+        revision: item.revision,
+      })),
       schedule: {
         id: schedule.id,
         type: schedule.type,
@@ -450,6 +574,19 @@ export class RemindersService {
         localTime: occurrence.localTime.trim(),
         originalScheduledAt: occurrence.originalScheduledAt.toISOString(),
         effectiveScheduledAt: occurrence.effectiveScheduledAt.toISOString(),
+        checklist: occurrence.checklistItems.map((item) => ({
+          id: item.id,
+          sourceItemId: item.sourceItemId,
+          text: item.text,
+          position: item.position,
+          checked: item.checkedAt !== null,
+          checkedAt: item.checkedAt?.toISOString() ?? null,
+          revision: item.revision,
+        })),
+        checklistProgress: {
+          checked: occurrence.checklistItems.filter((item) => item.checkedAt !== null).length,
+          total: occurrence.checklistItems.length,
+        },
       },
       occurrences: reminder.occurrences.map((item) => ({
         id: item.id,
@@ -461,6 +598,19 @@ export class RemindersService {
         localTime: item.localTime.trim(),
         originalScheduledAt: item.originalScheduledAt.toISOString(),
         effectiveScheduledAt: item.effectiveScheduledAt.toISOString(),
+        checklist: item.checklistItems.map((checklistItem) => ({
+          id: checklistItem.id,
+          sourceItemId: checklistItem.sourceItemId,
+          text: checklistItem.text,
+          position: checklistItem.position,
+          checked: checklistItem.checkedAt !== null,
+          checkedAt: checklistItem.checkedAt?.toISOString() ?? null,
+          revision: checklistItem.revision,
+        })),
+        checklistProgress: {
+          checked: item.checklistItems.filter((checklistItem) => checklistItem.checkedAt !== null).length,
+          total: item.checklistItems.length,
+        },
       })),
       idempotency: { key, replayed },
       createdAt: reminder.createdAt.toISOString(),
@@ -479,7 +629,7 @@ export class RemindersService {
     return key;
   }
 
-  private requestHash(dto: CreateReminderDto, weekdays: number[]): string {
+  private requestHash(userId: string, dto: CreateReminderDto, weekdays: number[]): string {
     return createHash('sha256')
       .update(
         JSON.stringify({
@@ -496,6 +646,21 @@ export class RemindersService {
           },
           confirmed: dto.confirmed,
           confirmedResolvedAt: new Date(dto.confirmedResolvedAt).toISOString(),
+          checklist: (dto.checklist ?? []).map((item) => item.text),
+          workflow: dto.workflow
+            ? {
+                name: dto.workflow.name,
+                steps: dto.workflow.steps.map((step) => ({
+                  title: step.title,
+                  contextNote: step.contextNote ?? null,
+                  delayMinutes: step.delayMinutes ?? 0,
+                  condition: step.condition ?? 'PREVIOUS_COMPLETED',
+                })),
+              }
+            : null,
+          contextTriggers: (dto.contextTriggers ?? []).map((trigger) =>
+            this.automations.contextTriggerRequestCommitment(userId, trigger),
+          ),
         }),
       )
       .digest('hex');

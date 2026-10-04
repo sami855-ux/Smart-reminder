@@ -54,9 +54,12 @@ export async function updateNotificationAlertPreferences(
 }
 
 export function notificationChannelId(
-  preferences: Pick<NotificationAlertPreferences, 'sound' | 'vibration'>,
+  preferences: Pick<
+    NotificationAlertPreferences,
+    'alertStyle' | 'sound' | 'vibration'
+  >,
 ): string {
-  return `reminders-v3-${preferences.sound.toLowerCase()}-${preferences.vibration.toLowerCase()}`;
+  return `reminders-v4-${preferences.alertStyle.toLowerCase()}-${preferences.sound.toLowerCase()}-${preferences.vibration.toLowerCase()}`;
 }
 
 export function notificationVibrationPattern(

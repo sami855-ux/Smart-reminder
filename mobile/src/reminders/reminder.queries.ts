@@ -13,4 +13,7 @@ export const reminderQueryKeys = {
   explanations: () => ['occurrence-explanation'] as const,
   nudgePolicy: (reminderId: string) => ['nudge-policy', reminderId] as const,
   events: (reminderId: string) => ['reminder-events', reminderId] as const,
+  workflows: (reminderId: string) => ['reminder-workflows', reminderId] as const,
+  contextTriggers: (reminderId?: string) =>
+    ['context-triggers', ...(reminderId ? [reminderId] : [])] as const,
 } as const;

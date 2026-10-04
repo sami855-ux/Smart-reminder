@@ -2,7 +2,11 @@ import { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../../database/prisma.service.js';
 import type { Environment } from '../../config/env.schema.js';
 import type { AuthPrincipal } from '../../common/auth/auth-principal.js';
-import { ContextTriggerTypeDto, WorkflowStepConditionDto } from './dto/reminder-automation.dto.js';
+import {
+  ContextTriggerTypeDto,
+  EditableWorkflowLifecycleDto,
+  WorkflowStepConditionDto,
+} from './dto/reminder-automation.dto.js';
 import { ReminderAutomationService } from './reminder-automation.service.js';
 import { ReminderScheduleService } from './reminder-schedule.service.js';
 
@@ -84,12 +88,14 @@ describe('ReminderAutomationService', () => {
   it('encrypts precise location coordinates before persistence', async () => {
     const createdAt = new Date('2026-10-04T10:00:00.000Z');
     const triggerCreate = vi.fn().mockImplementation(({ data }) => ({
-      id: '40000000-0000-4000-8000-000000000001',
+      id: data.id,
+      userId: principal.userId,
       reminderId,
       type: data.type,
       lifecycle: 'ACTIVE',
       label: data.label,
       locationCiphertext: data.locationCiphertext,
+      locationKeyVersion: data.locationKeyVersion,
       radiusMeters: data.radiusMeters,
       cooldownSeconds: data.cooldownSeconds,
       revision: 1,
@@ -141,12 +147,14 @@ describe('ReminderAutomationService', () => {
   it('stores a keyed fingerprint instead of the Wi-Fi network name', async () => {
     const createdAt = new Date('2026-10-04T10:00:00.000Z');
     const triggerCreate = vi.fn().mockImplementation(({ data }) => ({
-      id: '40000000-0000-4000-8000-000000000002',
+      id: data.id,
+      userId: principal.userId,
       reminderId,
       type: data.type,
       lifecycle: 'ACTIVE',
       label: data.label,
       locationCiphertext: null,
+      locationKeyVersion: null,
       radiusMeters: null,
       cooldownSeconds: data.cooldownSeconds,
       revision: 1,
@@ -188,5 +196,45 @@ describe('ReminderAutomationService', () => {
     expect(persisted).not.toHaveProperty('networkName');
     expect(persisted.networkFingerprint).toMatch(/^[a-f0-9]{64}$/u);
     expect(JSON.stringify(persisted)).not.toContain('Private Office Network');
+  });
+
+  it('pauses a workflow with optimistic concurrency and an audit event', async () => {
+    const createdAt = new Date('2026-10-04T10:00:00.000Z');
+    const workflow = {
+      id: '40000000-0000-4000-8000-000000000003',
+      sourceReminderId: reminderId,
+      name: 'Client follow-up',
+      lifecycle: 'ACTIVE',
+      revision: 2,
+      steps: [],
+      createdAt,
+      updatedAt: createdAt,
+    };
+    const tx = {
+      reminderWorkflow: {
+        findFirst: vi.fn().mockResolvedValue(workflow),
+        update: vi.fn().mockResolvedValue({ ...workflow, lifecycle: 'PAUSED', revision: 3 }),
+      },
+      reminderEvent: {
+        create: vi.fn().mockResolvedValue({ id: '60000000-0000-4000-8000-000000000003' }),
+      },
+    };
+    const prisma = {
+      reminderEvent: { findUnique: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaService;
+    const service = new ReminderAutomationService(prisma, new ReminderScheduleService(), config);
+
+    const result = await service.updateWorkflowLifecycle(
+      principal,
+      workflow.id,
+      'workflow-pause-1',
+      { expectedRevision: 2, lifecycle: EditableWorkflowLifecycleDto.PAUSED },
+    );
+
+    expect(result).toMatchObject({ id: workflow.id, lifecycle: 'PAUSED', revision: 3 });
+    expect(tx.reminderEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ type: 'WORKFLOW_LIFECYCLE_CHANGED' }),
+    });
   });
 });

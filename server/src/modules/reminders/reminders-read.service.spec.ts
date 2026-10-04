@@ -1,6 +1,7 @@
 import type { PrismaService } from '../../database/prisma.service.js';
 import { ReminderScheduleService } from './reminder-schedule.service.js';
 import { RemindersService } from './reminders.service.js';
+import type { ReminderAutomationService } from './reminder-automation.service.js';
 
 describe('RemindersService reads', () => {
   const userId = '10000000-0000-4000-8000-000000000001';
@@ -38,7 +39,7 @@ describe('RemindersService reads', () => {
     const prisma = {
       reminderOccurrence: { findMany },
     } as unknown as PrismaService;
-    const service = new RemindersService(prisma, new ReminderScheduleService());
+    const service = new RemindersService(prisma, new ReminderScheduleService(), {} as ReminderAutomationService);
 
     const result = await service.listOccurrences(userId, {
       from: '2026-09-27T00:00:00.000Z',
@@ -112,7 +113,7 @@ describe('RemindersService reads', () => {
       reminder: { findFirst },
       reminderOccurrence: { findMany },
     } as unknown as PrismaService;
-    const service = new RemindersService(prisma, new ReminderScheduleService());
+    const service = new RemindersService(prisma, new ReminderScheduleService(), {} as ReminderAutomationService);
 
     const result = await service.getReminder(userId, reminderId);
 
